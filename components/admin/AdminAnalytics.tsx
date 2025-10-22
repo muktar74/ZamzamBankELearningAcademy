@@ -40,7 +40,7 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ courses, users, allUser
     const averageRating = useMemo(() => {
         const allReviews = courses.flatMap(c => c.reviews);
         if (allReviews.length === 0) return 0;
-        // Fix: Explicitly type the accumulator `acc` as `number` to prevent type inference issues.
+        // Fix: Explicitly typed the accumulator `acc` as `number` to resolve a type inference issue.
         const totalRating = allReviews.reduce((acc: number, review) => acc + review.rating, 0);
         return (totalRating / allReviews.length);
     }, [courses]);
