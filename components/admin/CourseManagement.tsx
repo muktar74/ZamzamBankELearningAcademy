@@ -1,0 +1,212 @@
+
+import React, { useState, useMemo } from 'react';
+import { Course, User, NotificationType, Toast, UserRole } from '../../types';
+import CourseFormModal from '../CourseFormModal';
+import ConfirmModal from '../ConfirmModal';
+import { PlusIcon, PencilIcon, TrashIcon, ChevronUpIcon, ChevronDownIcon, ChevronUpDownIcon, SearchIcon } from '../icons';
+
+interface CourseManagementProps {
+  courses: Course[];
+  setCourses: React.Dispatch<React.SetStateAction<Course[]>>;
+  users: User[];
+  createNotification: (userId: string, type: NotificationType, message: string) => void;
+  addToast: (message: string, type: Toast['type']) => void;
+}
+
+type SortKey = 'title' | 'modules' | 'quiz';
+type SortDirection = 'ascending' | 'descending';
+
+const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses, users, createNotification, addToast }) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'title', direction: 'ascending' });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const [confirmModalState, setConfirmModalState] = useState<{isOpen: boolean; onConfirm: () => void}>({
+    isOpen: false,
+    onConfirm: () => {},
+  });
+  
+  const filteredAndSortedCourses = useMemo(() => {
+    let filteredCourses = [...courses];
+    
+    if (searchQuery) {
+        filteredCourses = filteredCourses.filter(course =>
+            course.title.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }
+    
+    filteredCourses.sort((a, b) => {
+      let aValue: string | number, bValue: string | number;
+
+      switch(sortConfig.key) {
+        case 'modules':
+          aValue = a.modules.length;
+          bValue = b.modules.length;
+          break;
+        case 'quiz':
+          aValue = a.quiz.length;
+          bValue = b.quiz.length;
+          break;
+        case 'title':
+        default:
+          aValue = a.title.toLowerCase();
+          bValue = b.title.toLowerCase();
+          break;
+      }
+
+      if (aValue < bValue) {
+        return sortConfig.direction === 'ascending' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'ascending' ? 1 : -1;
+      }
+      return 0;
+    });
+    
+    return filteredCourses;
+  }, [courses, sortConfig, searchQuery]);
+
+  const requestSort = (key: SortKey) => {
+    let direction: SortDirection = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const handleOpenModal = (course?: Course) => {
+    setEditingCourse(course || null);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingCourse(null);
+  };
+
+  const handleSaveCourse = (course: Course) => {
+    const isNewCourse = !editingCourse;
+    setCourses(prev => {
+      if (isNewCourse) {
+        // Notify all employees about the new course
+        users.forEach(u => {
+            if(u.role === UserRole.EMPLOYEE) {
+                createNotification(u.id, NotificationType.NEW_COURSE, `A new course has been added: "${course.title}"`);
+            }
+        });
+        return [...prev, course];
+      } else {
+        return prev.map(c => c.id === course.id ? course : c);
+      }
+    });
+    addToast(isNewCourse ? 'Course created successfully!' : 'Course updated successfully.', 'success');
+    handleCloseModal();
+  };
+  
+  const handleDeleteCourse = (courseId: string) => {
+    setConfirmModalState({
+        isOpen: true,
+        onConfirm: () => {
+            setCourses(prev => prev.filter(c => c.id !== courseId));
+            addToast('Course deleted successfully.', 'success');
+        }
+    });
+  };
+  
+  const SortableHeader: React.FC<{ sortKey: SortKey, label: string, className?: string }> = ({ sortKey, label, className = ''}) => {
+    const icon = sortConfig.key === sortKey
+        ? (sortConfig.direction === 'ascending' ? <ChevronUpIcon className="h-4 w-4 ml-1"/> : <ChevronDownIcon className="h-4 w-4 ml-1"/>)
+        : <ChevronUpDownIcon className="h-4 w-4 ml-1 text-slate-300"/>;
+    return (
+         <th scope="col" className={`px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider ${className}`}>
+            <div className="flex items-center cursor-pointer" onClick={() => requestSort(sortKey)}>
+                {label}
+                {icon}
+            </div>
+        </th>
+    );
+  }
+
+  return (
+    <div>
+        <div className="flex justify-between items-center mb-8">
+            <div>
+                <h2 className="text-3xl font-bold text-slate-800">Course Management</h2>
+                <p className="text-lg text-slate-600">Create, edit, and manage all e-learning courses.</p>
+            </div>
+             <div className="flex items-center gap-4">
+                <div className="relative">
+                    <input
+                        type="search"
+                        placeholder="Search courses..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
+                    />
+                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                </div>
+                <button
+                    onClick={() => handleOpenModal()}
+                    className="flex-shrink-0 flex items-center bg-zamzam-teal-600 text-white font-bold py-3 px-5 rounded-lg hover:bg-zamzam-teal-700 transition shadow-md"
+                >
+                    <PlusIcon className="h-5 w-5 mr-2" />
+                    Create Course
+                </button>
+            </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                    <tr>
+                        <SortableHeader sortKey="title" label="Course Title" />
+                        <SortableHeader sortKey="modules" label="Modules" className="hidden sm:table-cell" />
+                        <SortableHeader sortKey="quiz" label="Quiz Questions" className="hidden md:table-cell" />
+                        <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+                    {filteredAndSortedCourses.map(course => (
+                    <tr key={course.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{course.title}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 hidden sm:table-cell">{course.modules.length}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 hidden md:table-cell">{course.quiz.length}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <button onClick={() => handleOpenModal(course)} className="text-zamzam-teal-600 hover:text-zamzam-teal-800 p-2 rounded-full hover:bg-zamzam-teal-100 transition">
+                            <PencilIcon className="h-5 w-5"/>
+                        </button>
+                        <button onClick={() => handleDeleteCourse(course.id)} className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-100 transition">
+                            <TrashIcon className="h-5 w-5"/>
+                        </button>
+                        </td>
+                    </tr>
+                    ))}
+                    {filteredAndSortedCourses.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="text-center py-10 px-6 text-slate-500">
+                            No courses found matching your search.
+                        </td>
+                      </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+        <CourseFormModal
+            isOpen={isModalOpen}
+            onClose={handleCloseModal}
+            onSave={handleSaveCourse}
+            course={editingCourse}
+            addToast={addToast}
+        />
+        <ConfirmModal
+            isOpen={confirmModalState.isOpen}
+            onClose={() => setConfirmModalState({ isOpen: false, onConfirm: () => {} })}
+            onConfirm={confirmModalState.onConfirm}
+            title="Confirm Deletion"
+            message="Are you sure you want to delete this course? All associated progress and data will be lost."
+        />
+    </div>
+  );
+};
+
+export default CourseManagement;
