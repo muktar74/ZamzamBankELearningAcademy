@@ -1,9 +1,9 @@
-
 import React, { useState, useMemo } from 'react';
 import { Course, User, NotificationType, Toast, UserRole } from '../../types';
 import CourseFormModal from '../CourseFormModal';
 import ConfirmModal from '../ConfirmModal';
 import { PlusIcon, PencilIcon, TrashIcon, ChevronUpIcon, ChevronDownIcon, ChevronUpDownIcon, SearchIcon } from '../icons';
+import { supabase } from '../../services/supabaseClient';
 
 interface CourseManagementProps {
   courses: Course[];
@@ -85,29 +85,55 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
     setEditingCourse(null);
   };
 
-  const handleSaveCourse = (course: Course) => {
+  const handleSaveCourse = async (course: Course) => {
     const isNewCourse = !editingCourse;
-    setCourses(prev => {
-      if (isNewCourse) {
-        // Notify all employees about the new course
+    
+    const courseData = {
+        title: course.title,
+        description: course.description,
+        modules: course.modules,
+        quiz: course.quiz,
+        image_url: course.imageUrl,
+        textbook_url: course.textbookUrl,
+        textbook_name: course.textbookName,
+        discussion: course.discussion,
+    };
+
+    if (isNewCourse) {
+        const { data: newCourse, error } = await supabase.from('courses').insert(courseData).select().single();
+        if (error) {
+            addToast(`Error creating course: ${error.message}`, 'error');
+            return;
+        }
+        setCourses(prev => [...prev, newCourse as Course]);
         users.forEach(u => {
             if(u.role === UserRole.EMPLOYEE) {
                 createNotification(u.id, NotificationType.NEW_COURSE, `A new course has been added: "${course.title}"`);
             }
         });
-        return [...prev, course];
-      } else {
-        return prev.map(c => c.id === course.id ? course : c);
-      }
-    });
-    addToast(isNewCourse ? 'Course created successfully!' : 'Course updated successfully.', 'success');
+        addToast('Course created successfully!', 'success');
+    } else {
+        const { error } = await supabase.from('courses').update(courseData).eq('id', course.id);
+        if (error) {
+            addToast(`Error updating course: ${error.message}`, 'error');
+            return;
+        }
+        setCourses(prev => prev.map(c => c.id === course.id ? course : c));
+        addToast('Course updated successfully.', 'success');
+    }
+    
     handleCloseModal();
   };
   
   const handleDeleteCourse = (courseId: string) => {
     setConfirmModalState({
         isOpen: true,
-        onConfirm: () => {
+        onConfirm: async () => {
+            const { error } = await supabase.from('courses').delete().eq('id', courseId);
+            if(error) {
+                 addToast(`Error deleting course: ${error.message}`, 'error');
+                 return;
+            }
             setCourses(prev => prev.filter(c => c.id !== courseId));
             addToast('Course deleted successfully.', 'success');
         }

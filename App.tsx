@@ -1,8 +1,7 @@
 
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { User, Course, UserRole, UserProgress, CertificateData, Notification, NotificationType, AiMessage, Review, Toast as ToastType, AllUserProgress, ExternalResource } from './types';
-import { INITIAL_USERS, INITIAL_COURSES, INITIAL_NOTIFICATIONS, BADGE_DEFINITIONS, INITIAL_EXTERNAL_RESOURCES } from './constants';
+import { BADGE_DEFINITIONS } from './constants';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import CourseView from './components/CourseView';
@@ -19,158 +18,223 @@ import ResourceLibrary from './components/ResourceLibrary';
 import ErrorBoundary from './components/ErrorBoundary';
 import Toast from './components/Toast';
 import UserProfile from './components/UserProfile';
+import { supabase, isSupabaseConfigured } from './services/supabaseClient';
+import type { Session, RealtimeChannel } from '@supabase/supabase-js';
+
 
 type View = 'dashboard' | 'course' | 'certificate' | 'admin' | 'leaderboard' | 'resources' | 'courses' | 'profile';
 type Page = 'home' | 'login' | 'register' | 'app';
 
-const loadFromLocalStorage = <T,>(key: string, fallback: T, validator: (data: any) => data is T): T => {
-    try {
-        const stored = localStorage.getItem(key);
-        const parsed = stored ? JSON.parse(stored) : null;
-        if (validator(parsed)) {
-            // Special check for users to ensure admin always exists as a fallback for the demo.
-            if (key === 'zamzamUsers') {
-                const users = parsed as unknown as User[];
-                const adminExists = users.some(u => u.id === 'user-2');
-                if (!adminExists) {
-                    const adminUser = INITIAL_USERS.find(u => u.id === 'user-2');
-                    if (adminUser) {
-                        return [...users, adminUser] as unknown as T;
-                    }
-                }
-            }
-            return parsed;
-        }
-    } catch (error) {
-        console.error(`Failed to parse ${key} from localStorage`, error);
-    }
-    return fallback;
-};
-
 const App: React.FC = () => {
-  const [loggedInUserId, setLoggedInUserId] = useState<string | null>(() => localStorage.getItem('zamzamLoggedInUserId'));
-  const [users, setUsers] = useState<User[]>(() => loadFromLocalStorage('zamzamUsers', INITIAL_USERS, (d): d is User[] => Array.isArray(d)));
-  const [courses, setCourses] = useState<Course[]>(() => loadFromLocalStorage('zamzamCourses', INITIAL_COURSES, (d): d is Course[] => Array.isArray(d)));
-  const [notifications, setNotifications] = useState<Notification[]>(() => loadFromLocalStorage('zamzamNotifications', INITIAL_NOTIFICATIONS, (d): d is Notification[] => Array.isArray(d)));
-  const [allUserProgress, setAllUserProgress] = useState<AllUserProgress>(() => loadFromLocalStorage('zamzamAllUserProgress', {}, (d): d is AllUserProgress => typeof d === 'object' && d !== null));
-  const [externalResources, setExternalResources] = useState<ExternalResource[]>(() => loadFromLocalStorage('zamzamResources', INITIAL_EXTERNAL_RESOURCES, (d): d is ExternalResource[] => Array.isArray(d)));
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-screen bg-red-50 font-sans flex items-center justify-center p-4">
+        <div className="text-center p-8 bg-white rounded-2xl shadow-xl max-w-2xl mx-auto">
+          <h1 className="text-3xl font-bold text-red-700 mb-4">Configuration Error</h1>
+          <p className="text-slate-600 mb-6 text-lg">
+            The application cannot connect to the backend because the Supabase environment variables are missing.
+          </p>
+          <div className="text-left bg-slate-50 p-4 rounded-lg border border-slate-200">
+            <h2 className="font-semibold text-slate-800 mb-2">To fix this:</h2>
+            <ol className="list-decimal list-inside space-y-2 text-slate-700">
+              <li>Go to your project's settings in the deployment environment.</li>
+              <li>Find the section for "Environment Variables" or "Secrets".</li>
+              <li>Add the following two variables, using the values from your Supabase project dashboard:
+                <ul className="list-disc list-inside ml-6 mt-2 font-mono bg-slate-100 p-2 rounded">
+                    <li><code className="text-red-600">SUPABASE_URL</code></li>
+                    <li><code className="text-red-600">SUPABASE_ANON_KEY</code></li>
+                </ul>
+              </li>
+              <li>Redeploy or restart your application for the changes to take effect.</li>
+            </ol>
+            <p className="mt-4 text-sm text-slate-500">
+              Refer to the `README.md` file for more detailed setup instructions.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  const [session, setSession] = useState<Session | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  const [users, setUsers] = useState<User[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [allUserProgress, setAllUserProgress] = useState<AllUserProgress>({});
+  const [externalResources, setExternalResources] = useState<ExternalResource[]>([]);
 
   const [aiChatHistory, setAiChatHistory] = useState<AiMessage[]>([]);
   const [toasts, setToasts] = useState<ToastType[]>([]);
-
-  const currentUser = useMemo(() => {
-    if (!loggedInUserId) return null;
-    return users.find(u => u.id === loggedInUserId) || null;
-  }, [loggedInUserId, users]);
 
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [currentPage, setCurrentPage] = useState<Page>('home');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [certificateData, setCertificateData] = useState<CertificateData | null>(null);
   
-  // State persistence to localStorage
-  useEffect(() => {
-    localStorage.setItem('zamzamUsers', JSON.stringify(users));
-  }, [users]);
-  
-  useEffect(() => {
-    localStorage.setItem('zamzamCourses', JSON.stringify(courses));
-  }, [courses]);
-
-  useEffect(() => {
-    localStorage.setItem('zamzamNotifications', JSON.stringify(notifications));
-  }, [notifications]);
-  
-  useEffect(() => {
-    localStorage.setItem('zamzamAllUserProgress', JSON.stringify(allUserProgress));
-  }, [allUserProgress]);
-  
-  useEffect(() => {
-    localStorage.setItem('zamzamResources', JSON.stringify(externalResources));
-  }, [externalResources]);
-
   const addToast = useCallback((message: string, type: ToastType['type']) => {
     const id = `toast-${Date.now()}`;
     setToasts(prev => [...prev, { id, message, type }]);
   }, []);
 
-  const handleLogout = useCallback(() => {
-    setLoggedInUserId(null);
-    localStorage.removeItem('zamzamLoggedInUserId');
-  }, []);
+  const fetchAppData = useCallback(async (user: User) => {
+    try {
+        const fetchUsers = supabase.from('users').select('*');
+        const fetchCourses = supabase.from('courses').select('*');
+        const fetchProgress = supabase.from('user_progress').select('*');
+        const fetchResources = supabase.from('external_resources').select('*').order('createdAt', { ascending: false });
+        const fetchNotifications = supabase.from('notifications').select('*').eq('userId', user.id).order('timestamp', { ascending: false });
 
-  useEffect(() => {
-    if (currentUser) {
-        // If the current user gets un-approved while logged in, log them out.
-        if (!currentUser.approved) {
-            handleLogout();
-            addToast('Your account access has been revoked.', 'error');
-        } else {
-             setCurrentPage('app');
-             // The view might depend on the role, which could have been changed by an admin.
-             setCurrentView(currentUser.role === UserRole.ADMIN ? 'admin' : 'dashboard');
-        }
-    } else {
-        // No current user, so ensure we are on public pages.
-        if (loggedInUserId) {
-            // This means an ID was in storage but the user was deleted. Clean up.
-            setLoggedInUserId(null);
-            localStorage.removeItem('zamzamLoggedInUserId');
-        }
-        setCurrentPage('home');
+        const [
+            { data: usersData, error: usersError },
+            { data: coursesData, error: coursesError },
+            { data: progressData, error: progressError },
+            { data: resourcesData, error: resourcesError },
+            { data: notificationsData, error: notificationsError }
+        ] = await Promise.all([fetchUsers, fetchCourses, fetchProgress, fetchResources, fetchNotifications]);
+
+        if (usersError) throw usersError;
+        if (coursesError) throw coursesError;
+        if (progressError) throw progressError;
+        if (resourcesError) throw resourcesError;
+        if (notificationsError) throw notificationsError;
+        
+        // Transform progress data into the nested object structure the app uses
+        const progressObject = (progressData || []).reduce((acc: AllUserProgress, prog) => {
+            if (!acc[prog.user_id]) acc[prog.user_id] = {};
+            acc[prog.user_id][prog.course_id] = {
+                completedModules: prog.completed_modules || [],
+                quizScore: prog.quiz_score,
+                rating: prog.rating,
+                recentlyViewed: prog.recently_viewed,
+                completionDate: prog.completion_date,
+            };
+            return acc;
+        }, {});
+
+        setUsers(usersData || []);
+        setCourses(coursesData || []);
+        setAllUserProgress(progressObject);
+        setExternalResources(resourcesData || []);
+        setNotifications(notificationsData || []);
+        
+    } catch (error: any) {
+        addToast(`Error loading data: ${error.message}`, 'error');
+        console.error("Error fetching app data:", error);
     }
-  }, [currentUser, loggedInUserId, handleLogout, addToast]);
+  }, [addToast]);
+  
+  // Handle auth state changes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
 
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setSession(session);
+      if (session?.user) {
+        const { data: profile, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (error) {
+            console.error('Error fetching user profile:', error);
+            setCurrentUser(null);
+            return;
+        }
+
+        if (profile) {
+            if (!profile.approved) {
+                addToast('Your account is pending approval.', 'error');
+                await supabase.auth.signOut();
+            } else {
+                setCurrentUser(profile);
+                setCurrentPage('app');
+                setCurrentView(profile.role === UserRole.ADMIN ? 'admin' : 'dashboard');
+                await fetchAppData(profile);
+            }
+        }
+      } else {
+        setCurrentUser(null);
+        setCurrentPage('home');
+      }
+    });
+
+    return () => authListener.subscription.unsubscribe();
+  }, [addToast, fetchAppData]);
+  
+   // Realtime notifications subscription
+   useEffect(() => {
+    let channel: RealtimeChannel | null = null;
+    if (currentUser) {
+        channel = supabase
+            .channel(`public:notifications:userId=eq.${currentUser.id}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `userId=eq.${currentUser.id}` }, 
+            (payload) => {
+                setNotifications(prev => [payload.new as Notification, ...prev]);
+                addToast("You have a new notification!", 'info');
+            })
+            .subscribe();
+    }
+    return () => {
+        if (channel) {
+            supabase.removeChannel(channel);
+        }
+    };
+   }, [currentUser, addToast]);
+
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    // State will be cleared by the onAuthStateChange listener
+  };
+  
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
 
-  const createNotification = useCallback((userId: string, type: NotificationType, message: string) => {
-    const newNotification: Notification = {
-      id: `notif-${Date.now()}`,
+  const createNotification = useCallback(async (userId: string, type: NotificationType, message: string) => {
+    const newNotification = {
+      // id is generated by DB
       userId,
       type,
       message,
       timestamp: new Date().toISOString(),
       read: false,
     };
-    setNotifications(prev => [newNotification, ...prev]);
-  }, []);
-
-  const handleLogin = (email: string, password: string) => {
-    const user = users.find(u => u.email === email && u.password === password);
-    if (user) {
-        if (!user.approved) {
-            addToast('Your account is pending approval.', 'error');
-            return;
-        }
-      localStorage.setItem('zamzamLoggedInUserId', user.id);
-      setLoggedInUserId(user.id);
-      addToast('Login successful!', 'success');
-    } else {
-        addToast('Invalid email or password.', 'error');
+    const { error } = await supabase.from('notifications').insert(newNotification);
+    if (error) {
+        addToast(`Error creating notification: ${error.message}`, 'error');
     }
+    // If user is viewing their own notifications, it will update via realtime subscription.
+    // If admin is creating it for someone else, no need to update admin's state.
+  }, [addToast]);
+
+  const handleLogin = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) addToast(error.message, 'error');
+    else addToast('Login successful!', 'success');
   };
   
-  const handleRegister = (name: string, email: string, password: string) => {
-    if (users.some(u => u.email === email)) {
-        addToast('An account with this email already exists.', 'error');
-        return;
-    }
-    const newUser: User = {
-        id: `user-${Date.now()}`,
-        name,
-        email,
+  const handleRegister = async (name: string, email: string, password: string) => {
+    const { error } = await supabase.auth.signUp({ 
+        email, 
         password,
-        role: UserRole.EMPLOYEE,
-        approved: false,
-        points: 0,
-        badges: [],
-    };
-    setUsers(prev => [...prev, newUser]);
-    addToast('Registration successful! Your account is pending administrator approval.', 'success');
-    setCurrentPage('login');
+        options: {
+            data: {
+                name: name,
+            }
+        }
+    });
+    if (error) addToast(error.message, 'error');
+    else {
+        addToast('Registration successful! Please check your email to verify your account. Your account will then require administrator approval.', 'success');
+        setCurrentPage('login');
+    }
   };
 
   const setView = (view: View) => {
@@ -183,14 +247,26 @@ const App: React.FC = () => {
     setCurrentPage(page);
   };
 
-  const awardPoints = useCallback((userId: string, points: number) => {
-    setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, points: u.points + points } : u));
-  }, []);
+  const awardPoints = useCallback(async (userId: string, points: number) => {
+    const { error } = await supabase.rpc('increment_points', { user_id: userId, points_to_add: points });
+    if (error) {
+        addToast(`Error awarding points: ${error.message}`, 'error');
+    } else {
+        setUsers(prevUsers => prevUsers.map(u => u.id === userId ? { ...u, points: u.points + points } : u));
+    }
+  }, [addToast]);
 
-  const handleSelectCourse = useCallback((course: Course) => {
+  const handleSelectCourse = useCallback(async (course: Course) => {
     setSelectedCourse(course);
     setCurrentView('course');
     if (currentUser) {
+        const { error } = await supabase.from('user_progress').upsert({
+            user_id: currentUser.id,
+            course_id: course.id,
+            recently_viewed: new Date().toISOString()
+        });
+        if (error) addToast(`Error updating progress: ${error.message}`, 'error');
+        // also update local state for immediate feedback
         setAllUserProgress(prev => {
             const currentUserProgress = prev[currentUser.id] || {};
             const updatedUserProgress = {
@@ -203,52 +279,54 @@ const App: React.FC = () => {
             return { ...prev, [currentUser.id]: updatedUserProgress };
         });
     }
-  }, [currentUser]);
+  }, [currentUser, addToast]);
 
-  const handleCourseComplete = useCallback((course: Course, score: number) => {
+  const handleCourseComplete = useCallback(async (course: Course, score: number) => {
     if (!currentUser) return;
     
     const isFirstCompletion = (allUserProgress[currentUser.id]?.[course.id]?.quizScore) === null;
     
-    // Update progress state
-    setAllUserProgress(prev => {
-        const currentUserProgress = prev[currentUser.id] || {};
-        const courseProgress = currentUserProgress[course.id] || { completedModules: [], quizScore: null };
-        
-        const updatedCourseProgress: any = {
-            ...courseProgress,
-            quizScore: score,
-        };
-
-        if (isFirstCompletion) {
-            updatedCourseProgress.completionDate = new Date().toISOString();
+    const progressUpdate = {
+        user_id: currentUser.id,
+        course_id: course.id,
+        quiz_score: score,
+        completion_date: isFirstCompletion ? new Date().toISOString() : allUserProgress[currentUser.id]?.[course.id]?.completionDate
+    };
+    
+    const { error } = await supabase.from('user_progress').upsert(progressUpdate);
+    if(error) {
+        addToast(`Error saving completion: ${error.message}`, 'error');
+        return;
+    }
+    
+    setAllUserProgress(prev => ({
+        ...prev,
+        [currentUser.id]: {
+            ...prev[currentUser.id],
+            [course.id]: {
+                ...prev[currentUser.id]?.[course.id],
+                quizScore: score,
+                completionDate: progressUpdate.completion_date,
+            }
         }
+    }));
 
-        const updatedUserProgress = {
-            ...currentUserProgress,
-            [course.id]: updatedCourseProgress
-        };
-        return { ...prev, [currentUser.id]: updatedUserProgress };
-    });
-
-    // Award points and create certificate
     if (isFirstCompletion) {
-        awardPoints(currentUser.id, 100); // 100 points for completing a course
-        createNotification(currentUser.id, NotificationType.CERTIFICATE, `Congratulations! You earned a certificate for "${course.title}".`);
+        await awardPoints(currentUser.id, 100);
+        await createNotification(currentUser.id, NotificationType.CERTIFICATE, `Congratulations! You earned a certificate for "${course.title}".`);
     }
 
     setCertificateData({
       courseId: course.id,
       employeeName: currentUser.name,
       courseName: course.title,
-      completionDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      completionDate: new Date(progressUpdate.completion_date!).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     });
     setCurrentView('certificate');
 
-    // --- Badge Awarding Logic ---
     const userProgress = allUserProgress[currentUser.id] || {};
     const completedCourses = Object.keys(userProgress).filter(cId => userProgress[cId].quizScore !== null);
-    if (!completedCourses.includes(course.id)) { // Add current course if it's a new completion
+    if (!completedCourses.includes(course.id)) {
         completedCourses.push(course.id);
     }
     const completedCount = completedCourses.length;
@@ -269,50 +347,58 @@ const App: React.FC = () => {
                 createNotification(currentUser.id, NotificationType.BADGE, `You earned the "${badge.name}" badge and ${badge.points} points!`);
             }
         });
+        
+        const updatedBadges = [...currentUser.badges, ...newBadges];
+        const { error: userUpdateError } = await supabase.from('users').update({ badges: updatedBadges }).eq('id', currentUser.id);
+        if (userUpdateError) { addToast('Error awarding badge.', 'error'); return; }
+        
+        await awardPoints(currentUser.id, pointsToAddForBadges);
 
         setUsers(prevUsers => prevUsers.map(u => 
-            u.id === currentUser.id 
-                ? { ...u, badges: [...u.badges, ...newBadges], points: u.points + pointsToAddForBadges } 
-                : u
+            u.id === currentUser.id ? { ...u, badges: updatedBadges } : u
         ));
     }
   }, [currentUser, allUserProgress, awardPoints, createNotification, courses, addToast]);
 
-  const updateProgress = useCallback((courseId: string, moduleId: string) => {
+  const updateProgress = useCallback(async (courseId: string, moduleId: string) => {
     if (!currentUser) return;
-    setAllUserProgress(prev => {
-        const currentUserProgress = prev[currentUser.id] || {};
-        const courseProg = currentUserProgress[courseId] || { completedModules: [], quizScore: null };
-        if (!courseProg.completedModules.includes(moduleId)) {
-            awardPoints(currentUser.id, 10); // 10 points per module
-            const updatedCourseProg = {
-                ...courseProg,
-                completedModules: [...courseProg.completedModules, moduleId]
-            };
-            const updatedUserProgress = { ...currentUserProgress, [courseId]: updatedCourseProg };
-            return { ...prev, [currentUser.id]: updatedUserProgress };
-        }
-        return prev;
-    });
-  }, [currentUser, awardPoints]);
+    const courseProg = allUserProgress[currentUser.id]?.[courseId] || { completedModules: [], quizScore: null };
+    if (!courseProg.completedModules.includes(moduleId)) {
+        await awardPoints(currentUser.id, 10);
+        
+        const updatedModules = [...courseProg.completedModules, moduleId];
+        const { error } = await supabase.from('user_progress').upsert({
+            user_id: currentUser.id,
+            course_id: courseId,
+            completed_modules: updatedModules,
+        });
 
-  const handleRateCourse = useCallback((courseId: string, rating: number, comment: string) => {
+        if (error) { addToast(`Error updating progress: ${error.message}`, 'error'); return; }
+        
+        setAllUserProgress(prev => ({
+            ...prev,
+            [currentUser.id]: {
+                ...prev[currentUser.id],
+                [courseId]: {
+                    ...courseProg,
+                    completedModules: updatedModules,
+                }
+            }
+        }));
+    }
+  }, [currentUser, awardPoints, allUserProgress, addToast]);
+
+  const handleRateCourse = useCallback(async (courseId: string, rating: number, comment: string) => {
     if (!currentUser) return;
     
-    setAllUserProgress(prev => {
-        const currentUserProgress = prev[currentUser.id] || {};
-        const updatedUserProgress = {
-            ...currentUserProgress,
-            [courseId]: {
-                ...(currentUserProgress[courseId] || { completedModules: [], quizScore: null }),
-                rating: rating,
-            }
-        };
-        return { ...prev, [currentUser.id]: updatedUserProgress };
+    const { error: progressError } = await supabase.from('user_progress').upsert({
+        user_id: currentUser.id,
+        course_id: courseId,
+        rating: rating,
     });
+    if (progressError) { addToast('Error saving rating.', 'error'); return; }
 
-    const newReview: Review = {
-        id: `rev-${Date.now()}`,
+    const newReview: Omit<Review, 'id'> = {
         authorId: currentUser.id,
         authorName: currentUser.name,
         rating,
@@ -320,19 +406,35 @@ const App: React.FC = () => {
         timestamp: new Date().toISOString(),
     };
 
+    const { error: reviewError } = await supabase.from('reviews').insert({ ...newReview, course_id: courseId });
+    if(reviewError) { addToast('Error saving review.', 'error'); return; }
+    
+    // Optimistic UI updates
+    setAllUserProgress(prev => ({ ...prev, [currentUser.id]: { ...prev[currentUser.id], [courseId]: { ...prev[currentUser.id]?.[courseId], rating: rating }}}));
     setCourses(prevCourses => prevCourses.map(c => 
-        c.id === courseId ? { ...c, reviews: [...c.reviews, newReview] } : c
+        c.id === courseId ? { ...c, reviews: [...c.reviews, { ...newReview, id: `rev-${Date.now()}`}] } : c
     ));
     addToast('Thank you for your review!', 'success');
   }, [currentUser, addToast]);
 
-  const handleUpdateUser = (updatedUser: User) => {
-    setUsers(prevUsers => prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
-    addToast('Profile updated successfully!', 'success');
+  const handleUpdateUser = async (updatedUser: User) => {
+    const { error } = await supabase.from('users').update({
+        name: updatedUser.name,
+        email: updatedUser.email,
+        profileImageUrl: updatedUser.profileImageUrl,
+    }).eq('id', updatedUser.id);
+
+    if (error) {
+        addToast(`Error updating profile: ${error.message}`, 'error');
+    } else {
+        setUsers(prevUsers => prevUsers.map(u => u.id === updatedUser.id ? updatedUser : u));
+        setCurrentUser(updatedUser);
+        addToast('Profile updated successfully!', 'success');
+    }
   };
 
   const renderAppContent = () => {
-    if (!currentUser) return <Login onLogin={handleLogin} setPage={setPage} />;
+    if (!currentUser) return null; // Should be handled by page renderer
     const currentUserProgress = allUserProgress[currentUser.id] || {};
 
     if (currentUser.role === UserRole.ADMIN) {
@@ -426,13 +528,13 @@ const App: React.FC = () => {
                 <Footer />
             </div>;
         case 'app':
-             if (!currentUser) return <Login onLogin={handleLogin} setPage={setPage} />;
+             if (!currentUser) return <div className="min-h-screen bg-zamzam-teal-50 flex items-center justify-center"><p>Loading...</p></div>;
              return (
                 <div className="min-h-screen bg-zamzam-teal-50 font-sans text-slate-800 flex flex-col">
                   <Header
                     user={currentUser}
                     onLogout={handleLogout}
-                    notifications={notifications.filter(n => n.userId === currentUser.id)}
+                    notifications={notifications}
                     setNotifications={setNotifications}
                     onNavigate={setView}
                   />

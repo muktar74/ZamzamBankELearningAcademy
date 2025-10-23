@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { BookOpenIcon } from './icons';
 
 interface RegisterProps {
-  onRegister: (name: string, email: string, password: string) => void;
+  onRegister: (name: string, email: string, password: string) => Promise<void>;
   setPage: (page: 'home' | 'login' | 'register') => void;
 }
 
@@ -11,10 +11,13 @@ const Register: React.FC<RegisterProps> = ({ onRegister, setPage }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onRegister(name, email, password);
+    setIsLoading(true);
+    await onRegister(name, email, password);
+    setIsLoading(false);
   };
 
   return (
@@ -40,6 +43,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, setPage }) => {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+            autoComplete="name"
             className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
             placeholder="Aisha Ahmed"
           />
@@ -54,6 +58,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, setPage }) => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
             className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
             placeholder="aisha.ahmed@zamzambank.com"
           />
@@ -68,6 +73,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, setPage }) => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="new-password"
             className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
             placeholder="••••••••"
           />
@@ -75,9 +81,10 @@ const Register: React.FC<RegisterProps> = ({ onRegister, setPage }) => {
         
         <button
           type="submit"
-          className="w-full bg-zamzam-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-zamzam-teal-700 transition duration-300"
+          disabled={isLoading}
+          className="w-full bg-zamzam-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-zamzam-teal-700 transition duration-300 disabled:bg-slate-400"
         >
-          Register
+          {isLoading ? 'Registering...' : 'Register'}
         </button>
       </form>
        <p className="text-center text-sm text-slate-600 mt-6">

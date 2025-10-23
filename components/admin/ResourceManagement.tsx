@@ -1,9 +1,9 @@
-
 import React, { useState, useMemo } from 'react';
 import { ExternalResource, Toast } from '../../types';
 import ResourceFormModal from '../ResourceFormModal';
 import ConfirmModal from '../ConfirmModal';
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, BookOpenIcon, LinkIcon, VideoCameraIcon } from '../icons';
+import { supabase } from '../../services/supabaseClient';
 
 interface ResourceManagementProps {
   externalResources: ExternalResource[];
@@ -45,23 +45,41 @@ const ResourceManagement: React.FC<ResourceManagementProps> = ({ externalResourc
     setEditingResource(null);
   };
 
-  const handleSaveResource = (resource: ExternalResource) => {
-    setExternalResources(prev => {
-      if (editingResource) {
-        return prev.map(r => r.title === editingResource.title ? resource : r); // Simple check by title for this demo
-      } else {
-        return [resource, ...prev];
-      }
-    });
-    addToast(editingResource ? 'Resource updated successfully!' : 'Resource added successfully!', 'success');
+  const handleSaveResource = async (resource: ExternalResource) => {
+    if (editingResource) {
+        const { error } = await supabase.from('external_resources').update({
+            title: resource.title,
+            description: resource.description,
+            url: resource.url,
+            type: resource.type,
+        }).eq('id', editingResource.id);
+
+        if (error) { addToast(`Error updating resource: ${error.message}`, 'error'); return; }
+
+        setExternalResources(prev => prev.map(r => r.id === editingResource.id ? {...resource, id: editingResource.id} : r));
+        addToast('Resource updated successfully!', 'success');
+    } else {
+        const { id, ...newResourceData } = resource;
+        const { data: newResource, error } = await supabase.from('external_resources').insert(newResourceData).select().single();
+        
+        if (error) { addToast(`Error adding resource: ${error.message}`, 'error'); return; }
+
+        setExternalResources(prev => [newResource as ExternalResource, ...prev]);
+        addToast('Resource added successfully!', 'success');
+    }
     handleCloseModal();
   };
 
-  const handleDeleteResource = (title: string) => {
+  const handleDeleteResource = (resourceId: string) => {
     setConfirmModalState({
       isOpen: true,
-      onConfirm: () => {
-        setExternalResources(prev => prev.filter(r => r.title !== title));
+      onConfirm: async () => {
+        const { error } = await supabase.from('external_resources').delete().eq('id', resourceId);
+        if (error) {
+            addToast(`Error deleting resource: ${error.message}`, 'error');
+            return;
+        }
+        setExternalResources(prev => prev.filter(r => r.id !== resourceId));
         addToast('Resource deleted successfully.', 'success');
       },
       message: 'Are you sure you want to delete this resource? This action cannot be undone.'
@@ -108,7 +126,7 @@ const ResourceManagement: React.FC<ResourceManagementProps> = ({ externalResourc
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
                         {filteredResources.map(resource => (
-                        <tr key={resource.title}>
+                        <tr key={resource.id}>
                             <td className="px-6 py-4 whitespace-nowrap">
                                 <a href={resource.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-zamzam-teal-600 hover:underline">{resource.title}</a>
                             </td>
@@ -121,7 +139,7 @@ const ResourceManagement: React.FC<ResourceManagementProps> = ({ externalResourc
                                 <button onClick={() => handleOpenModal(resource)} className="text-zamzam-teal-600 hover:text-zamzam-teal-800 p-2 rounded-full hover:bg-zamzam-teal-100 transition">
                                     <PencilIcon className="h-5 w-5"/>
                                 </button>
-                                <button onClick={() => handleDeleteResource(resource.title)} className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-100 transition">
+                                <button onClick={() => handleDeleteResource(resource.id!)} className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-100 transition">
                                     <TrashIcon className="h-5 w-5"/>
                                 </button>
                             </td>

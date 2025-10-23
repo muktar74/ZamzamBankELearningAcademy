@@ -1,9 +1,9 @@
-
 import React, { useState, useMemo } from 'react';
-import { User, NotificationType, Toast } from '../types';
+import { User, UserRole, NotificationType, Toast } from '../types';
 import UserFormModal from './UserFormModal';
 import { PlusIcon, PencilIcon, TrashIcon, CheckCircleIcon, SearchIcon } from './icons';
 import ConfirmModal from './ConfirmModal';
+import { supabase } from '../services/supabaseClient';
 
 interface UserManagementProps {
   users: User[];
@@ -47,29 +47,75 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, create
     setEditingUser(null);
   };
 
-  const handleSaveUser = (user: User) => {
-    setUsers(prev => {
-      if (editingUser) {
-        return prev.map(u => u.id === user.id ? user : u);
-      } else {
-        return [...prev, { ...user, approved: true }];
-      }
-    });
-    addToast(editingUser ? 'User updated successfully.' : 'User created successfully.', 'success');
-    handleCloseModal();
+  const handleSaveUser = async (user: User, password?: string) => {
+    if (editingUser) { // Update existing user
+        const { error } = await supabase.from('users').update({ name: user.name }).eq('id', editingUser.id);
+        if (error) {
+            addToast(`Error updating user: ${error.message}`, 'error');
+            throw error;
+        }
+        if (password) {
+            addToast("For security, admin cannot change passwords here. Please advise user to use 'Forgot Password'.", 'info');
+        }
+        setUsers(prev => prev.map(u => u.id === editingUser.id ? { ...u, name: user.name } : u));
+        addToast('User updated successfully.', 'success');
+        handleCloseModal();
+    } else { // Create new user
+        if (!password) {
+            addToast('Password is required for new users.', 'error');
+            throw new Error('Password is required');
+        }
+        const { data, error: signUpError } = await supabase.auth.signUp({
+            email: user.email,
+            password: password,
+            options: { data: { name: user.name } }
+        });
+        if (signUpError) {
+            addToast(signUpError.message, 'error');
+            throw signUpError;
+        }
+        if (data.user) {
+            // New user is created by trigger, now approve them
+            const { error: updateError } = await supabase.from('users').update({ approved: true }).eq('id', data.user.id);
+            if (updateError) {
+                addToast(`User created but failed to approve: ${updateError.message}`, 'error');
+            }
+            // Add user to local state after fetching the full profile
+             const { data: profile, error: profileError } = await supabase.from('users').select('*').eq('id', data.user.id).single();
+            if (profileError || !profile) {
+                addToast('User created, but failed to fetch profile for local state.', 'error');
+            } else {
+                setUsers(prev => [...prev, profile]);
+            }
+            addToast('User created and approved successfully.', 'success');
+            handleCloseModal();
+        }
+    }
   };
   
   const handleDeleteUser = (userId: string) => {
     setConfirmModalState({
       isOpen: true,
-      onConfirm: () => {
+      onConfirm: async () => {
+        // Note: This only deletes the public user profile. The auth user remains.
+        // For a production app, use a server-side Edge Function to delete the auth user.
+        const { error } = await supabase.from('users').delete().eq('id', userId);
+        if (error) {
+            addToast(`Error deleting user: ${error.message}`, 'error');
+            return;
+        }
         setUsers(prev => prev.filter(u => u.id !== userId));
         addToast('User deleted successfully.', 'success');
       },
     });
   };
 
-  const handleApproveUser = (userId: string) => {
+  const handleApproveUser = async (userId: string) => {
+    const { error } = await supabase.from('users').update({ approved: true }).eq('id', userId);
+    if (error) {
+        addToast(`Error approving user: ${error.message}`, 'error');
+        return;
+    }
     setUsers(prev => prev.map(u => {
       if (u.id === userId) {
         createNotification(userId, NotificationType.APPROVAL, "Welcome to the platform! Your registration has been approved.");
@@ -187,7 +233,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, create
         </div>
       </div>
 
-      {isModalOpen && (
+      
         <UserFormModal
           isOpen={isModalOpen}
           onClose={handleCloseModal}
@@ -195,7 +241,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, create
           user={editingUser}
           addToast={addToast}
         />
-      )}
+      
 
       <ConfirmModal
         isOpen={confirmModalState.isOpen}

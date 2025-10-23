@@ -1,12 +1,13 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { User, Toast } from '../types';
 import { ChevronLeftIcon, UserCircleIcon, PencilIcon, CameraIcon } from './icons';
 import { BADGE_DEFINITIONS } from '../constants';
+import { supabase } from '../services/supabaseClient';
 
 interface UserProfileProps {
   user: User;
-  onUpdateUser: (updatedUser: User) => void;
+  onUpdateUser: (updatedUser: User) => Promise<void>;
   onBack: () => void;
   addToast: (message: string, type: Toast['type']) => void;
 }
@@ -19,33 +20,43 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpdateUser, onBack, a
   const [photo, setPhoto] = useState(user.profileImageUrl);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      if(file.size > 2 * 1024 * 1024) { // 2MB limit
-          addToast("Image file is too large. Please use a file smaller than 2MB.", 'error');
-          return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhoto(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) { // 2MB limit
+      addToast("Image file is too large. Please use a file smaller than 2MB.", 'error');
+      return;
+    }
+
+    try {
+      const fileName = `${user.id}-${Date.now()}`;
+      const { data, error } = await supabase.storage
+        .from('assets')
+        .upload(`public/${fileName}`, file);
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('assets')
+        .getPublicUrl(data.path);
+
+      setPhoto(publicUrl);
+      addToast("Profile picture updated.", 'success');
+    } catch (error: any) {
+      addToast(`Error uploading image: ${error.message}`, 'error');
     }
   };
 
-  const handleSaveChanges = () => {
+  const handleSaveChanges = async () => {
     if (name.trim() === '' || email.trim() === '') {
-        addToast("Name and email cannot be empty.", 'error');
-        return;
+      addToast("Name and email cannot be empty.", 'error');
+      return;
     }
     setIsSaving(true);
-    // Simulate async operation for UX feedback
-    setTimeout(() => {
-        onUpdateUser({ ...user, name, email, profileImageUrl: photo });
-        setIsEditing(false);
-        setIsSaving(false);
-    }, 500);
+    await onUpdateUser({ ...user, name, email, profileImageUrl: photo });
+    setIsEditing(false);
+    setIsSaving(false);
   };
 
   const handleCancelEdit = () => {
@@ -110,7 +121,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpdateUser, onBack, a
                                 type="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="w-full max-w-sm px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+                                disabled // Email is tied to auth, shouldn't be changed here
+                                className="w-full max-w-sm px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100 disabled:bg-slate-200"
                                 />
                             </div>
                         </div>

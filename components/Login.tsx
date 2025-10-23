@@ -3,19 +3,20 @@ import React, { useState } from 'react';
 import { BookOpenIcon } from './icons';
 
 interface LoginProps {
-  onLogin: (email: string, password: string) => void;
+  onLogin: (email: string, password: string) => Promise<void>;
   setPage: (page: 'home' | 'login' | 'register') => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin, setPage }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // SECURITY WARNING: This is a client-side password check for demo purposes only.
-    // In a real application, this logic must be handled by a secure backend server.
-    onLogin(email, password);
+    setIsLoading(true);
+    await onLogin(email, password);
+    setIsLoading(false);
   };
 
   return (
@@ -41,6 +42,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, setPage }) => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
             className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
             placeholder="muktarabdella6@gmail.com"
           />
@@ -55,6 +57,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, setPage }) => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="current-password"
             className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
             placeholder="••••••••"
           />
@@ -62,9 +65,10 @@ const Login: React.FC<LoginProps> = ({ onLogin, setPage }) => {
 
         <button
           type="submit"
-          className="w-full bg-zamzam-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-zamzam-teal-700 transition duration-300"
+          disabled={isLoading}
+          className="w-full bg-zamzam-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-zamzam-teal-700 transition duration-300 disabled:bg-slate-400"
         >
-          Login
+          {isLoading ? 'Logging in...' : 'Login'}
         </button>
       </form>
        <p className="text-center text-sm text-slate-600 mt-6">

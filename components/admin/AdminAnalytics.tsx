@@ -29,7 +29,8 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ courses, users, allUser
     const employeeUsers = useMemo(() => users.filter(u => u.role === UserRole.EMPLOYEE), [users]);
 
     const totalCompletions = useMemo(() => {
-        return Object.values(allUserProgress).reduce((acc, userProgress) => {
+        // Fix: Explicitly type the accumulator 'acc' as 'number' to prevent incorrect type inference to 'unknown'.
+        return Object.values(allUserProgress).reduce((acc: number, userProgress) => {
             return acc + Object.values(userProgress).filter(p => p.quizScore !== null).length;
         }, 0);
     }, [allUserProgress]);
@@ -37,8 +38,6 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ courses, users, allUser
     const averageRating = useMemo(() => {
         const allReviews = courses.flatMap(c => c.reviews);
         if (allReviews.length === 0) return 0;
-        // Fix: Explicitly typed the accumulator `acc` as `number`. TypeScript was incorrectly
-        // inferring its type, leading to an error when using the '+' operator.
         const totalRating = allReviews.reduce((acc: number, review) => acc + review.rating, 0);
         return (totalRating / allReviews.length);
     }, [courses]);

@@ -12,14 +12,15 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  password?: string;
   approved?: boolean;
   points: number;
   badges: string[];
   profileImageUrl?: string;
+  createdAt?: string;
 }
 
 export interface QuizQuestion {
+  id?: string;
   question: string;
   options: string[];
   correctAnswer: string;
@@ -60,6 +61,7 @@ export interface Course {
   discussion: DiscussionPost[];
   textbookUrl?: string;
   textbookName?: string;
+  createdAt?: string;
 }
 
 export interface UserProgress {
@@ -84,10 +86,12 @@ export interface CertificateData {
 }
 
 export interface ExternalResource {
+  id?: string;
   title: string;
   description: string;
   url: string;
   type: 'book' | 'article' | 'video';
+  createdAt?: string;
 }
 
 export enum NotificationType {

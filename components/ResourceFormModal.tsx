@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { ExternalResource, Toast } from '../types';
 
@@ -37,7 +36,7 @@ const ResourceFormModal: React.FC<ResourceFormModalProps> = ({ isOpen, onClose, 
         return;
     }
     
-    onSave({ title, description, url, type });
+    onSave({ id: resource?.id, title, description, url, type });
   };
 
   if (!isOpen) return null;

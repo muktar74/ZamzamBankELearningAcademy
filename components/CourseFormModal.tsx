@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Course, Module, QuizQuestion, Toast } from '../types';
 import { generateCourseContent, generateQuiz } from '../services/geminiService';
 import { SparklesIcon, PlusIcon, TrashIcon, BookOpenIcon } from './icons';
+import { supabase } from '../services/supabaseClient';
 
 interface CourseFormModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
   const [modules, setModules] = useState<Module[]>([]);
   const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [textbookUrl, setTextbookUrl] = useState<string | undefined>(undefined);
   const [textbookName, setTextbookName] = useState<string | undefined>(undefined);
   
@@ -105,24 +107,35 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
     setQuiz(quiz.filter((_, i) => i !== index));
   };
   
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      // 50MB limit for base64 safety
-      if (file.size > 50 * 1024 * 1024) {
-          addToast("File is too large. Please use a file smaller than 50MB.", 'error');
-          return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setTextbookUrl(reader.result as string);
+    if (!file) return;
+
+    if (file.size > 50 * 1024 * 1024) { // 50MB limit
+      addToast("File is too large. Please use a file smaller than 50MB.", 'error');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+        const fileName = `textbook-${Date.now()}-${file.name}`;
+        const { data, error } = await supabase.storage
+            .from('assets')
+            .upload(`public/${fileName}`, file);
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('assets')
+            .getPublicUrl(data.path);
+        
+        setTextbookUrl(publicUrl);
         setTextbookName(file.name);
-        addToast(`File "${file.name}" uploaded.`, 'success');
-      };
-      reader.onerror = () => {
-        addToast("Failed to read the file.", 'error');
-      };
-      reader.readAsDataURL(file);
+        addToast(`File "${file.name}" uploaded successfully.`, 'success');
+    } catch (error: any) {
+        addToast(`Failed to upload file: ${error.message}`, 'error');
+    } finally {
+        setIsUploading(false);
     }
   };
 
@@ -201,24 +214,27 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                             ref={fileInputRef}
                             onChange={handleFileChange}
                             className="hidden"
+                            disabled={isUploading}
                         />
                          <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center px-4 py-2 text-sm font-semibold text-zamzam-teal-700 bg-zamzam-teal-100 rounded-md hover:bg-zamzam-teal-200 transition"
+                            disabled={isUploading}
+                            className="flex items-center px-4 py-2 text-sm font-semibold text-zamzam-teal-700 bg-zamzam-teal-100 rounded-md hover:bg-zamzam-teal-200 transition disabled:bg-slate-300"
                         >
                             <BookOpenIcon className="h-5 w-5 mr-2" />
-                            Upload File
+                            {isUploading ? 'Uploading...' : 'Upload File'}
                         </button>
                         {textbookName && (
                              <div className="flex items-center gap-2 text-sm text-slate-600">
-                                <span>{textbookName}</span>
+                                <a href={textbookUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">{textbookName}</a>
                                 <button
                                     type="button"
                                     onClick={() => {
                                         setTextbookUrl(undefined);
                                         setTextbookName(undefined);
                                         if (fileInputRef.current) fileInputRef.current.value = "";
+                                        // Note: Does not delete from Supabase storage, just removes link from course
                                     }}
                                     className="text-red-500 hover:text-red-700"
                                     aria-label="Remove textbook"
@@ -228,7 +244,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                              </div>
                         )}
                     </div>
-                     <p className="text-xs text-slate-500 mt-2">Note: Storing large files will impact performance. This feature is for demonstration purposes. Max file size: 50MB.</p>
+                     <p className="text-xs text-slate-500 mt-2">Upload a PDF, DOCX, or PPTX file. Max file size: 50MB.</p>
                 </div>
 
               {/* Modules */}

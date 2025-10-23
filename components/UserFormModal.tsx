@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, Toast } from '../types';
 
 interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (user: User) => void;
+  onSave: (user: User, password?: string) => Promise<void>;
   user: User | null;
   addToast: (message: string, type: Toast['type']) => void;
 }
@@ -14,6 +13,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -25,30 +25,34 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
       setEmail('');
       setPassword('');
     }
-  }, [user]);
+  }, [user, isOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email || (!user && !password)) {
         addToast("Please fill out all fields.", "error");
         return;
     }
     
-    // For editing, only update password if a new one is entered
-    const finalPassword = user ? (password || user.password) : password;
-
     const savedUser: User = {
-        id: user?.id || `user-${Date.now()}`,
+        id: user?.id || '', // id will be set by auth/db
         name,
         email,
-        password: finalPassword,
         role: user?.role || UserRole.EMPLOYEE,
         approved: user?.approved,
         points: user?.points || 0,
         badges: user?.badges || [],
         profileImageUrl: user?.profileImageUrl,
     };
-    onSave(savedUser);
+
+    setIsSaving(true);
+    try {
+        await onSave(savedUser, password);
+    } catch (error) {
+        // Error is handled and toasted in the parent component
+    } finally {
+        setIsSaving(false);
+    }
   };
 
 
@@ -79,6 +83,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
               required
+              disabled={!!user} // prevent changing email for existing user
             />
           </div>
           <div className="mb-6">
@@ -99,8 +104,8 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition">
               Cancel
             </button>
-            <button type="submit" className="px-6 py-2 text-sm font-semibold text-white bg-zamzam-teal-600 rounded-md hover:bg-zamzam-teal-700 transition">
-                {user ? 'Save Changes' : 'Create User'}
+            <button type="submit" disabled={isSaving} className="px-6 py-2 text-sm font-semibold text-white bg-zamzam-teal-600 rounded-md hover:bg-zamzam-teal-700 transition disabled:bg-slate-400">
+                {isSaving ? 'Saving...' : (user ? 'Save Changes' : 'Create User')}
             </button>
           </div>
         </form>
