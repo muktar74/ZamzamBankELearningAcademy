@@ -10,46 +10,31 @@ interface QuizViewProps {
 const QuizView: React.FC<QuizViewProps> = ({ course, onQuizComplete }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
-  const [showResults, setShowResults] = useState(false);
 
   const handleAnswerSelect = (answer: string) => {
     setSelectedAnswers(prev => ({ ...prev, [currentQuestionIndex]: answer }));
   };
-
-  const handleNext = () => {
-    if (currentQuestionIndex < course.quiz.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-    } else {
-      setShowResults(true);
-    }
-  };
-
+  
   const calculateScore = () => {
     let correct = 0;
+    // Use a temporary object to include the very last answer, as state update might be pending
+    const allAnswers = { ...selectedAnswers }; 
     course.quiz.forEach((q, index) => {
-      if (selectedAnswers[index] === q.correctAnswer) {
+      if (allAnswers[index] === q.correctAnswer) {
         correct++;
       }
     });
     return (correct / course.quiz.length) * 100;
   };
 
-  if (showResults) {
-    const score = calculateScore();
-    return (
-      <div className="bg-white p-8 rounded-xl shadow-lg text-center">
-        <h2 className="text-3xl font-bold mb-4">Quiz Results</h2>
-        <p className="text-5xl font-bold text-zamzam-teal-600 mb-4">{score.toFixed(0)}%</p>
-        <p className="text-lg text-slate-600 mb-8">You have completed the quiz for "{course.title}".</p>
-        <button
-          onClick={() => onQuizComplete(score)}
-          className="bg-zamzam-teal-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-zamzam-teal-700 transition"
-        >
-          Generate Certificate
-        </button>
-      </div>
-    );
-  }
+  const handleNext = () => {
+    if (currentQuestionIndex < course.quiz.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+    } else {
+      // Last question: calculate score and finish immediately
+      onQuizComplete(calculateScore());
+    }
+  };
 
   const currentQuestion = course.quiz[currentQuestionIndex];
 

@@ -1,8 +1,8 @@
 
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { User, Course, UserRole, UserProgress, CertificateData, Notification, NotificationType, AiMessage, Review, Toast as ToastType, AllUserProgress } from './types';
-import { INITIAL_USERS, INITIAL_COURSES, INITIAL_NOTIFICATIONS, BADGE_DEFINITIONS } from './constants';
+import { User, Course, UserRole, UserProgress, CertificateData, Notification, NotificationType, AiMessage, Review, Toast as ToastType, AllUserProgress, ExternalResource } from './types';
+import { INITIAL_USERS, INITIAL_COURSES, INITIAL_NOTIFICATIONS, BADGE_DEFINITIONS, INITIAL_EXTERNAL_RESOURCES } from './constants';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import CourseView from './components/CourseView';
@@ -53,6 +53,7 @@ const App: React.FC = () => {
   const [courses, setCourses] = useState<Course[]>(() => loadFromLocalStorage('zamzamCourses', INITIAL_COURSES, (d): d is Course[] => Array.isArray(d)));
   const [notifications, setNotifications] = useState<Notification[]>(() => loadFromLocalStorage('zamzamNotifications', INITIAL_NOTIFICATIONS, (d): d is Notification[] => Array.isArray(d)));
   const [allUserProgress, setAllUserProgress] = useState<AllUserProgress>(() => loadFromLocalStorage('zamzamAllUserProgress', {}, (d): d is AllUserProgress => typeof d === 'object' && d !== null));
+  const [externalResources, setExternalResources] = useState<ExternalResource[]>(() => loadFromLocalStorage('zamzamResources', INITIAL_EXTERNAL_RESOURCES, (d): d is ExternalResource[] => Array.isArray(d)));
 
   const [aiChatHistory, setAiChatHistory] = useState<AiMessage[]>([]);
   const [toasts, setToasts] = useState<ToastType[]>([]);
@@ -83,6 +84,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('zamzamAllUserProgress', JSON.stringify(allUserProgress));
   }, [allUserProgress]);
+  
+  useEffect(() => {
+    localStorage.setItem('zamzamResources', JSON.stringify(externalResources));
+  }, [externalResources]);
 
   const addToast = useCallback((message: string, type: ToastType['type']) => {
     const id = `toast-${Date.now()}`;
@@ -339,6 +344,8 @@ const App: React.FC = () => {
         createNotification={createNotification}
         addToast={addToast}
         allUserProgress={allUserProgress}
+        externalResources={externalResources}
+        setExternalResources={setExternalResources}
       />;
     }
 
@@ -353,6 +360,7 @@ const App: React.FC = () => {
             onModuleComplete={updateProgress}
             onCourseComplete={(score) => selectedCourse && handleCourseComplete(selectedCourse, score)}
             onBack={() => setView('dashboard')}
+            addToast={addToast}
           />
         );
       case 'certificate':
@@ -369,7 +377,7 @@ const App: React.FC = () => {
       case 'leaderboard':
         return <Leaderboard users={users.filter(u => u.role === UserRole.EMPLOYEE)} onBack={() => setView('dashboard')} />;
       case 'resources':
-        return <ResourceLibrary onBack={() => setView('dashboard')} />;
+        return <ResourceLibrary onBack={() => setView('dashboard')} resources={externalResources} />;
       case 'courses':
         return (
             <Dashboard 

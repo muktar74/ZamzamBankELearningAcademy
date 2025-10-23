@@ -128,7 +128,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpdateUser, onBack, a
                 {!isEditing && (
                     <button
                         onClick={() => setIsEditing(true)}
-                        className="flex items-center self-start bg-slate-100 text-slate-700 font-semibold py-2 px-4 rounded-lg hover:bg-slate-200 transition"
+                        className="flex items-center self-start bg-slate-100 text-slate-700 font-semibold py-2 px-4 rounded-lg hover:bg-slate-200 transition mt-4 md:mt-0"
                     >
                         <PencilIcon className="h-4 w-4 mr-2" />
                         Edit Profile

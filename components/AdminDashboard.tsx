@@ -1,13 +1,14 @@
 
 
 import React, { useState } from 'react';
-import { Course, User, NotificationType, Toast, AllUserProgress } from '../types';
+import { Course, User, NotificationType, Toast, AllUserProgress, ExternalResource } from '../types';
 import UserManagement from './UserManagement';
-import { BookOpenIcon, UsersIcon, ChartBarIcon, DocumentTextIcon, BellIcon } from './icons';
+import { BookOpenIcon, UsersIcon, ChartBarIcon, DocumentTextIcon, BellIcon, BookOpenIcon as LibraryIcon } from './icons';
 import CourseManagement from './admin/CourseManagement';
 import AdminAnalytics from './admin/AdminAnalytics';
 import AdminReports from './admin/AdminReports';
 import AdminNotifications from './admin/AdminNotifications';
+import ResourceManagement from './admin/ResourceManagement';
 
 interface AdminDashboardProps {
   courses: Course[];
@@ -17,9 +18,11 @@ interface AdminDashboardProps {
   createNotification: (userId: string, type: NotificationType, message: string) => void;
   addToast: (message: string, type: Toast['type']) => void;
   allUserProgress: AllUserProgress;
+  externalResources: ExternalResource[];
+  setExternalResources: React.Dispatch<React.SetStateAction<ExternalResource[]>>;
 }
 
-type AdminTab = 'courses' | 'users' | 'analytics' | 'reports' | 'notifications';
+type AdminTab = 'courses' | 'users' | 'analytics' | 'reports' | 'notifications' | 'resources';
 
 const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('courses');
@@ -27,7 +30,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const TabButton: React.FC<{tab: AdminTab, label: string, icon: React.ReactNode}> = ({tab, label, icon}) => (
     <button
         onClick={() => setActiveTab(tab)}
-        className={`flex items-center space-x-2 px-4 py-3 text-sm font-semibold border-b-2 transition ${
+        className={`flex-shrink-0 flex items-center space-x-2 px-4 py-3 text-sm font-semibold border-b-2 transition ${
             activeTab === tab
                 ? 'border-zamzam-teal-600 text-zamzam-teal-600'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -48,6 +51,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         return <AdminReports {...props} />;
       case 'notifications':
         return <AdminNotifications {...props} />;
+      case 'resources':
+        return <ResourceManagement {...props} />;
       case 'courses':
       default:
         return <CourseManagement {...props} />;
@@ -57,9 +62,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   return (
     <div>
       <div className="border-b border-slate-200 mb-8 bg-white rounded-t-xl shadow">
-          <nav className="-mb-px flex space-x-6 px-6" aria-label="Tabs">
+          <nav className="-mb-px flex space-x-2 sm:space-x-6 px-2 sm:px-6 overflow-x-auto" aria-label="Tabs">
               <TabButton tab="courses" label="Courses" icon={<BookOpenIcon className="h-5 w-5"/>} />
               <TabButton tab="users" label="Users" icon={<UsersIcon className="h-5 w-5"/>} />
+              <TabButton tab="resources" label="Resources" icon={<LibraryIcon className="h-5 w-5"/>} />
               <TabButton tab="analytics" label="Analytics" icon={<ChartBarIcon className="h-5 w-5"/>} />
               <TabButton tab="reports" label="Reports" icon={<DocumentTextIcon className="h-5 w-5"/>} />
               <TabButton tab="notifications" label="Notifications" icon={<BellIcon className="h-5 w-5"/>} />

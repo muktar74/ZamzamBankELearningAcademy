@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { EXTERNAL_RESOURCES } from '../constants';
 import { ExternalResource } from '../types';
 import { ChevronLeftIcon, SearchIcon, BookOpenIcon, LinkIcon, VideoCameraIcon } from './icons';
 
 interface ResourceLibraryProps {
   onBack: () => void;
+  resources: ExternalResource[];
 }
 
 const iconMap: { [key in ExternalResource['type']]: React.ReactElement } = {
@@ -14,26 +14,26 @@ const iconMap: { [key in ExternalResource['type']]: React.ReactElement } = {
   video: <VideoCameraIcon className="h-6 w-6 text-slate-500" />,
 };
 
-const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ onBack }) => {
+const ResourceLibrary: React.FC<ResourceLibraryProps> = ({ onBack, resources }) => {
   const [filter, setFilter] = useState<'all' | ExternalResource['type']>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredResources = useMemo(() => {
-    let resources = EXTERNAL_RESOURCES;
+    let filtered = resources;
 
     if (filter !== 'all') {
-      resources = resources.filter(r => r.type === filter);
+      filtered = filtered.filter(r => r.type === filter);
     }
     
     if (searchQuery) {
-        resources = resources.filter(r => 
+        filtered = filtered.filter(r => 
             r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             r.description.toLowerCase().includes(searchQuery.toLowerCase())
         );
     }
 
-    return resources;
-  }, [filter, searchQuery]);
+    return filtered;
+  }, [filter, searchQuery, resources]);
 
   const FilterButton: React.FC<{ type: 'all' | ExternalResource['type']; label: string }> = ({ type, label }) => (
     <button

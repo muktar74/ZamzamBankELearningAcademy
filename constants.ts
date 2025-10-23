@@ -104,7 +104,7 @@ export const INITIAL_COURSES: Course[] = [
   },
 ];
 
-export const EXTERNAL_RESOURCES: ExternalResource[] = [
+export const INITIAL_EXTERNAL_RESOURCES: ExternalResource[] = [
   {
     title: 'Islamic Finance: A Practical Guide',
     description: 'An essential book covering the fundamental principles and instruments of Islamic Finance.',

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Course, User } from '../types';
+import { Course, User, Toast } from '../types';
 import QuizView from './QuizView';
 import DiscussionForum from './DiscussionForum';
 import { ChevronLeftIcon, DocumentTextIcon, CheckCircleIcon, LockClosedIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, StarIcon, BookOpenIcon as DownloadIcon } from './icons';
@@ -17,14 +17,17 @@ interface CourseViewProps {
   onModuleComplete: (courseId: string, moduleId: string) => void;
   onCourseComplete: (score: number) => void;
   onBack: () => void;
+  addToast: (message: string, type: Toast['type']) => void;
 }
 
 type CourseTab = 'content' | 'discussion' | 'reviews';
 
-const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser, userProgress, onModuleComplete, onCourseComplete, onBack }) => {
+const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser, userProgress, onModuleComplete, onCourseComplete, onBack, addToast }) => {
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [activeTab, setActiveTab] = useState<CourseTab>('content');
+  
+  const completedModules = userProgress?.completedModules || [];
 
   useEffect(() => {
       if (course && course.modules && course.modules.length > 0) {
@@ -33,19 +36,19 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
             setActiveModuleId(firstModuleId);
           }
       }
-  }, [course]);
+  }, [course, activeModuleId]);
 
   const activeModule = course?.modules.find(m => m.id === activeModuleId);
   const activeModuleIndex = course?.modules.findIndex(m => m.id === activeModuleId) ?? -1;
-  const completedModules = userProgress?.completedModules || [];
   const allModulesCompleted = course ? completedModules.length === course.modules.length : false;
   const hasQuiz = course && course.quiz && course.quiz.length > 0;
 
   useEffect(() => {
     if (activeModuleId && course && !completedModules.includes(activeModuleId)) {
       onModuleComplete(course.id, activeModuleId);
+      addToast('Module complete! You earned 10 points.', 'success');
     }
-  }, [activeModuleId, course, onModuleComplete]);
+  }, [activeModuleId, course, completedModules, onModuleComplete, addToast]);
   
   const handleNextModule = () => {
     if (course && activeModuleIndex < course.modules.length - 1) {
@@ -155,9 +158,9 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
         {/* Content Area */}
         <main className="lg:w-2/3 min-w-0">
             <div className="border-b border-slate-200 mb-6">
-                <div className="flex items-center space-x-4">
-                    <TabButton tab="content" label="Course Content" icon={<AcademicCapIcon className="h-5 w-5"/>} />
-                    <TabButton tab="discussion" label="Discussion Forum" icon={<ChatBubbleLeftRightIcon className="h-5 w-5"/>} />
+                <div className="flex items-center space-x-2 sm:space-x-4 overflow-x-auto">
+                    <TabButton tab="content" label="Content" icon={<AcademicCapIcon className="h-5 w-5"/>} />
+                    <TabButton tab="discussion" label="Discussion" icon={<ChatBubbleLeftRightIcon className="h-5 w-5"/>} />
                     <TabButton tab="reviews" label="Reviews" icon={<StarIcon className="h-5 w-5"/>} />
                 </div>
             </div>

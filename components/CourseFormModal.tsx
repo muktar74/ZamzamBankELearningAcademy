@@ -228,6 +228,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                              </div>
                         )}
                     </div>
+                     <p className="text-xs text-slate-500 mt-2">Note: Storing large files will impact performance. This feature is for demonstration purposes. Max file size: 50MB.</p>
                 </div>
 
               {/* Modules */}

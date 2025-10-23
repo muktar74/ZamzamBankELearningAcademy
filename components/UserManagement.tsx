@@ -95,14 +95,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, create
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
         <div>
             <h2 className="text-3xl font-bold text-slate-800">User Management</h2>
             <p className="text-lg text-slate-600">Add, edit, and manage employee accounts.</p>
         </div>
         <button
           onClick={() => handleOpenModal()}
-          className="flex items-center bg-zamzam-teal-600 text-white font-bold py-3 px-5 rounded-lg hover:bg-zamzam-teal-700 transition shadow-md"
+          className="flex items-center bg-zamzam-teal-600 text-white font-bold py-3 px-5 rounded-lg hover:bg-zamzam-teal-700 transition shadow-md self-start md:self-center"
         >
           <PlusIcon className="h-5 w-5 mr-2" />
           Add New Employee
@@ -128,61 +128,63 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, create
       </div>
 
       <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Name</th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Email</th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Points</th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
-              <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-slate-200">
-            {filteredUsers.map(user => (
-              <tr key={user.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{user.name}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{user.email}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        user.role === 'Admin' ? 'bg-zamzam-teal-100 text-zamzam-teal-800' : 'bg-slate-100 text-slate-800'
-                    }`}>
-                        {user.role}
-                    </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 font-semibold">{user.points}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        user.approved ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
-                    }`}>
-                        {user.approved ? 'Approved' : 'Pending'}
-                    </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                  {!user.approved && user.role !== 'Admin' && (
-                     <button onClick={() => handleApproveUser(user.id)} className="flex items-center text-white bg-green-600 hover:bg-green-700 px-3 py-1 rounded-full text-xs transition">
-                        <CheckCircleIcon className="h-4 w-4 mr-1"/> Approve
-                    </button>
-                  )}
-                  <button onClick={() => handleOpenModal(user)} className="text-zamzam-teal-600 hover:text-zamzam-teal-800 p-2 rounded-full hover:bg-zamzam-teal-100 transition" disabled={user.role === 'Admin'}>
-                    <PencilIcon className={`h-5 w-5 ${user.role === 'Admin' && 'text-slate-300'}`}/>
-                  </button>
-                  <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-100 transition" disabled={user.role === 'Admin'}>
-                    <TrashIcon className={`h-5 w-5 ${user.role === 'Admin' && 'text-slate-300'}`}/>
-                  </button>
-                </td>
-              </tr>
-            ))}
-             {filteredUsers.length === 0 && (
-              <tr>
-                <td colSpan={6} className="text-center py-10 px-6 text-slate-500">
-                    No users found matching your criteria.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Name</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Email</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Points</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                  <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {filteredUsers.map(user => (
+                  <tr key={user.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{user.name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{user.email}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            user.role === 'Admin' ? 'bg-zamzam-teal-100 text-zamzam-teal-800' : 'bg-slate-100 text-slate-800'
+                        }`}>
+                            {user.role}
+                        </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 font-semibold">{user.points}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            user.approved ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                            {user.approved ? 'Approved' : 'Pending'}
+                        </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                      {!user.approved && user.role !== 'Admin' && (
+                         <button onClick={() => handleApproveUser(user.id)} className="flex items-center text-white bg-green-600 hover:bg-green-700 px-3 py-1 rounded-full text-xs transition">
+                            <CheckCircleIcon className="h-4 w-4 mr-1"/> Approve
+                        </button>
+                      )}
+                      <button onClick={() => handleOpenModal(user)} className="text-zamzam-teal-600 hover:text-zamzam-teal-800 p-2 rounded-full hover:bg-zamzam-teal-100 transition" disabled={user.role === 'Admin'}>
+                        <PencilIcon className={`h-5 w-5 ${user.role === 'Admin' && 'text-slate-300'}`}/>
+                      </button>
+                      <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-100 transition" disabled={user.role === 'Admin'}>
+                        <TrashIcon className={`h-5 w-5 ${user.role === 'Admin' && 'text-slate-300'}`}/>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                 {filteredUsers.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-center py-10 px-6 text-slate-500">
+                        No users found matching your criteria.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+        </div>
       </div>
 
       {isModalOpen && (

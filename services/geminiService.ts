@@ -1,34 +1,18 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
-import { Module, QuizQuestion, AiMessage, Course } from '../types';
+import { Module, QuizQuestion, AiMessage } from '../types';
 
-let ai: GoogleGenAI | null = null;
+// Initialize the AI client directly using the environment variable, as per guidelines.
+// The serverless function for fetching the key has been removed as it was causing errors
+// and is against the recommended implementation pattern.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Asynchronously initializes the GoogleGenAI client by fetching the API key
-// from our secure serverless function. This function caches the client
-// so the key is only fetched once.
-const getAiClient = async (): Promise<GoogleGenAI> => {
-    if (ai) {
-        return ai;
-    }
-    try {
-        const response = await fetch('/api/get-api-key');
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to fetch API key from server.');
-        }
-        const { apiKey } = await response.json();
-        if (!apiKey) {
-            throw new Error('API key was not returned from the server.');
-        }
-        ai = new GoogleGenAI({ apiKey });
-        return ai;
-    } catch (error) {
-        console.error("Could not initialize AI Client:", error);
+// A helper function to ensure the client is initialized before use.
+const checkAiClient = () => {
+    if (!process.env.API_KEY) {
         throw new Error("Could not connect to the AI service. Please ensure the API key is configured correctly in the deployment settings.");
     }
 };
-
 
 interface GeneratedContent {
   description: string;
@@ -37,14 +21,14 @@ interface GeneratedContent {
 
 export const generateCourseContent = async (topic: string): Promise<GeneratedContent> => {
  try {
-    const aiClient = await getAiClient();
+    checkAiClient();
     const prompt = `Generate course content for a corporate e-learning platform. The topic is "${topic}".
 The target audience is employees of Zamzam Bank, an Islamic financial institution.
 The content should be professional, informative, and suitable for professional development in Islamic finance.
 Provide a course description and 3 modules. Each module should have a title and detailed content.
 Format the module content using simple HTML tags like <p>, <strong>, <ul>, and <li> for better readability.`;
 
-    const response = await aiClient.models.generateContent({
+    const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
@@ -92,7 +76,7 @@ Format the module content using simple HTML tags like <p>, <strong>, <ul>, and <
 
 export const generateQuiz = async (courseContent: string): Promise<QuizQuestion[]> => {
   try {
-    const aiClient = await getAiClient();
+    checkAiClient();
     const prompt = `Based on the following course content, generate a quiz with 3 multiple-choice questions.
 Each question should have 4 options and one correct answer.
 The questions should test understanding of the key concepts in the content.
@@ -103,7 +87,7 @@ ${courseContent}
 ---
 `;
 
-    const response = await aiClient.models.generateContent({
+    const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
@@ -148,7 +132,7 @@ ${courseContent}
 
 export const getAiChatResponse = async (history: AiMessage[], courseContext?: {title: string, description: string}): Promise<string> => {
     try {
-        const aiClient = await getAiClient();
+        checkAiClient();
         let systemInstruction = "You are a helpful and knowledgeable assistant for Zamzam Bank's e-learning platform. Your expertise is in Islamic Finance Banking (IFB). Be friendly, professional, and provide clear explanations. You must not answer questions outside the scope of Islamic finance, banking, or the provided course context.";
         
         if (courseContext) {
@@ -160,9 +144,9 @@ export const getAiChatResponse = async (history: AiMessage[], courseContext?: {t
             parts: [{ text: h.text }]
         }));
 
-        const response = await aiClient.models.generateContent({
+        const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: {parts: contents},
+            contents: contents,
             config: {
                 systemInstruction: systemInstruction,
             }
@@ -177,7 +161,7 @@ export const getAiChatResponse = async (history: AiMessage[], courseContext?: {t
 
 export const analyzeDiscussionTopics = async (discussionText: string): Promise<string[]> => {
     try {
-        const aiClient = await getAiClient();
+        checkAiClient();
         const prompt = `Analyze the following discussion forum comments from a corporate e-learning course on Islamic Finance.
 Identify and list up to 5 main topics, keywords, or questions that people are frequently talking about.
 Ignore pleasantries, greetings, and generic comments. Focus on the core subject matter.
@@ -189,7 +173,7 @@ ${discussionText}
 ---
 `;
         
-        const response = await aiClient.models.generateContent({
+        const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {

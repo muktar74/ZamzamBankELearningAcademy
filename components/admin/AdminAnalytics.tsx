@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo } from 'react';
 import { Course, User, UserRole, AllUserProgress, Toast, DiscussionPost } from '../../types';
 import { BookOpenIcon, UsersIcon, CheckCircleIcon, StarIcon, SparklesIcon } from '../icons';
@@ -24,7 +22,6 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
     </div>
 );
 
-// Fix: Added the missing AdminAnalytics component and its default export.
 const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ courses, users, allUserProgress, addToast }) => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analyzedTopics, setAnalyzedTopics] = useState<string[]>([]);
@@ -40,7 +37,8 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ courses, users, allUser
     const averageRating = useMemo(() => {
         const allReviews = courses.flatMap(c => c.reviews);
         if (allReviews.length === 0) return 0;
-        // Fix: Explicitly typed the accumulator `acc` as `number` to resolve a type inference issue.
+        // Fix: Explicitly typed the accumulator `acc` as `number`. TypeScript was incorrectly
+        // inferring its type, leading to an error when using the '+' operator.
         const totalRating = allReviews.reduce((acc: number, review) => acc + review.rating, 0);
         return (totalRating / allReviews.length);
     }, [courses]);
