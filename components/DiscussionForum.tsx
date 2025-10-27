@@ -1,13 +1,15 @@
 
 import React, { useState } from 'react';
-import { Course, DiscussionPost, User } from '../types';
+import { Course, DiscussionPost, User, Toast } from '../types';
 import { UserCircleIcon, PaperAirplaneIcon, ChatBubbleLeftRightIcon } from './icons';
+import { supabase } from '../services/supabaseClient';
 
 interface DiscussionForumProps {
   courseId: string;
   posts: DiscussionPost[];
   currentUser: User;
   setCourses: React.Dispatch<React.SetStateAction<Course[]>>;
+  addToast: (message: string, type: Toast['type']) => void;
 }
 
 interface PostProps {
@@ -67,7 +69,7 @@ const Post: React.FC<PostProps> = ({ post, onReply, currentUser, isReply = false
     )
 }
 
-const DiscussionForum: React.FC<DiscussionForumProps> = ({ courseId, posts, currentUser, setCourses }) => {
+const DiscussionForum: React.FC<DiscussionForumProps> = ({ courseId, posts, currentUser, setCourses, addToast }) => {
   const [newPostText, setNewPostText] = useState('');
 
   const addReplyToPost = (posts: DiscussionPost[], parentId: string, newReply: DiscussionPost): DiscussionPost[] => {
@@ -82,7 +84,7 @@ const DiscussionForum: React.FC<DiscussionForumProps> = ({ courseId, posts, curr
     });
   };
 
-  const handleReply = (parentId: string, text: string) => {
+  const handleReply = async (parentId: string, text: string) => {
     const newReply: DiscussionPost = {
         id: `d-${Date.now()}`,
         authorId: currentUser.id,
@@ -92,14 +94,26 @@ const DiscussionForum: React.FC<DiscussionForumProps> = ({ courseId, posts, curr
         replies: [],
     };
 
+    const updatedDiscussion = addReplyToPost(posts, parentId, newReply);
+
+    const { error } = await supabase
+      .from('courses')
+      .update({ discussion: updatedDiscussion })
+      .eq('id', courseId);
+
+    if (error) {
+      addToast(`Error posting reply: ${error.message}`, 'error');
+      return;
+    }
+
     setCourses(prevCourses => prevCourses.map(course =>
         course.id === courseId
-            ? { ...course, discussion: addReplyToPost(course.discussion, parentId, newReply) }
+            ? { ...course, discussion: updatedDiscussion }
             : course
     ));
   };
   
-  const handleNewPost = (e: React.FormEvent) => {
+  const handleNewPost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPostText.trim()) return;
 
@@ -112,9 +126,21 @@ const DiscussionForum: React.FC<DiscussionForumProps> = ({ courseId, posts, curr
         replies: [],
     };
 
+    const updatedDiscussion = [newPost, ...posts];
+
+    const { error } = await supabase
+      .from('courses')
+      .update({ discussion: updatedDiscussion })
+      .eq('id', courseId);
+
+    if (error) {
+      addToast(`Error creating post: ${error.message}`, 'error');
+      return;
+    }
+
     setCourses(prevCourses => prevCourses.map(course =>
         course.id === courseId
-            ? { ...course, discussion: [newPost, ...course.discussion] }
+            ? { ...course, discussion: updatedDiscussion }
             : course
     ));
     setNewPostText('');

@@ -81,7 +81,7 @@ const App: React.FC = () => {
   const fetchAppData = useCallback(async (user: User) => {
     try {
         const fetchUsers = supabase.from('users').select('*');
-        const fetchCourses = supabase.from('courses').select('*');
+        const fetchCourses = supabase.from('courses').select('*, reviews(*)');
         const fetchProgress = supabase.from('user_progress').select('*');
         const fetchResources = supabase.from('external_resources').select('*').order('createdAt', { ascending: false });
         const fetchNotifications = supabase.from('notifications').select('*').eq('userId', user.id).order('timestamp', { ascending: false });
@@ -114,7 +114,7 @@ const App: React.FC = () => {
         }, {});
 
         setUsers(usersData || []);
-        setCourses(coursesData || []);
+        setCourses((coursesData as Course[]) || []);
         setAllUserProgress(progressObject);
         setExternalResources(resourcesData || []);
         setNotifications(notificationsData || []);
@@ -406,13 +406,13 @@ const App: React.FC = () => {
         timestamp: new Date().toISOString(),
     };
 
-    const { error: reviewError } = await supabase.from('reviews').insert({ ...newReview, course_id: courseId });
-    if(reviewError) { addToast('Error saving review.', 'error'); return; }
+    const { data: savedReview, error: reviewError } = await supabase.from('reviews').insert({ ...newReview, course_id: courseId }).select().single();
+    if(reviewError || !savedReview) { addToast('Error saving review.', 'error'); return; }
     
     // Optimistic UI updates
     setAllUserProgress(prev => ({ ...prev, [currentUser.id]: { ...prev[currentUser.id], [courseId]: { ...prev[currentUser.id]?.[courseId], rating: rating }}}));
     setCourses(prevCourses => prevCourses.map(c => 
-        c.id === courseId ? { ...c, reviews: [...c.reviews, { ...newReview, id: `rev-${Date.now()}`}] } : c
+        c.id === courseId ? { ...c, reviews: [...c.reviews, savedReview as Review] } : c
     ));
     addToast('Thank you for your review!', 'success');
   }, [currentUser, addToast]);

@@ -202,6 +202,7 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
                 posts={course.discussion} 
                 currentUser={currentUser}
                 setCourses={setCourses}
+                addToast={addToast}
             />
           )}
           {activeTab === 'reviews' && (
