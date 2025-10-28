@@ -18,7 +18,7 @@ import ResourceLibrary from './components/ResourceLibrary';
 import ErrorBoundary from './components/ErrorBoundary';
 import Toast from './components/Toast';
 import UserProfile from './components/UserProfile';
-import { supabase, isSupabaseConfigured } from './services/supabaseClient';
+import { supabase } from './services/supabaseClient';
 import type { Session, RealtimeChannel } from '@supabase/supabase-js';
 
 
@@ -26,36 +26,6 @@ type View = 'dashboard' | 'course' | 'certificate' | 'admin' | 'leaderboard' | '
 type Page = 'home' | 'login' | 'register' | 'app';
 
 const App: React.FC = () => {
-  if (!isSupabaseConfigured) {
-    return (
-      <div className="min-h-screen bg-red-50 font-sans flex items-center justify-center p-4">
-        <div className="text-center p-8 bg-white rounded-2xl shadow-xl max-w-2xl mx-auto">
-          <h1 className="text-3xl font-bold text-red-700 mb-4">Configuration Error</h1>
-          <p className="text-slate-600 mb-6 text-lg">
-            The application cannot connect to the backend because the Supabase environment variables are missing.
-          </p>
-          <div className="text-left bg-slate-50 p-4 rounded-lg border border-slate-200">
-            <h2 className="font-semibold text-slate-800 mb-2">To fix this:</h2>
-            <ol className="list-decimal list-inside space-y-2 text-slate-700">
-              <li>Go to your project's settings in the deployment environment.</li>
-              <li>Find the section for "Environment Variables" or "Secrets".</li>
-              <li>Add the following two variables, using the values from your Supabase project dashboard:
-                <ul className="list-disc list-inside ml-6 mt-2 font-mono bg-slate-100 p-2 rounded">
-                    <li><code className="text-red-600">SUPABASE_URL</code></li>
-                    <li><code className="text-red-600">SUPABASE_ANON_KEY</code></li>
-                </ul>
-              </li>
-              <li>Redeploy or restart your application for the changes to take effect.</li>
-            </ol>
-            <p className="mt-4 text-sm text-slate-500">
-              Refer to the `README.md` file for more detailed setup instructions.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
   const [session, setSession] = useState<Session | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
@@ -134,28 +104,27 @@ const App: React.FC = () => {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       if (session?.user) {
+        // Fetch the user profile using the secure RPC call.
+        // This is more robust against RLS race conditions than a direct select.
         const { data: profile, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
+            .rpc('get_user_profile')
+            .single();
         
-        if (error) {
-            console.error('Error fetching user profile:', error);
-            setCurrentUser(null);
+        if (error || !profile) {
+            console.error('Error fetching user profile via RPC:', error?.message || 'Profile not found.');
+            addToast('Could not load your profile. Please try logging in again.', 'error');
+            await supabase.auth.signOut();
             return;
         }
 
-        if (profile) {
-            if (!profile.approved) {
-                addToast('Your account is pending approval.', 'error');
-                await supabase.auth.signOut();
-            } else {
-                setCurrentUser(profile);
-                setCurrentPage('app');
-                setCurrentView(profile.role === UserRole.ADMIN ? 'admin' : 'dashboard');
-                await fetchAppData(profile);
-            }
+        if (!profile.approved) {
+            addToast('Your account is pending approval.', 'error');
+            await supabase.auth.signOut();
+        } else {
+            setCurrentUser(profile as User);
+            setCurrentPage('app');
+            setCurrentView(profile.role === UserRole.ADMIN ? 'admin' : 'dashboard');
+            await fetchAppData(profile as User);
         }
       } else {
         setCurrentUser(null);

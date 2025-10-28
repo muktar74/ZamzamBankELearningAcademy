@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import { Module, QuizQuestion, AiMessage } from '../types';
 
@@ -71,6 +70,67 @@ Format the module content using simple HTML tags like <p>, <strong>, <ul>, and <
     console.error("Gemini API Error (generateCourseContent):", error);
     throw new Error(String(error) || "Failed to generate course content from AI. Please check your prompt and try again.");
  }
+};
+
+export const generateCourseFromText = async (documentText: string): Promise<GeneratedContent> => {
+    try {
+        checkAiClient();
+        const prompt = `You are an expert instructional designer for Zamzam Bank, an Islamic financial institution.
+        Based on the following textbook content, create a comprehensive e-learning course for bank employees.
+        
+        Your output must be a JSON object with:
+        1. A concise and engaging "description" of the course, summarizing the key learnings.
+        2. An array of 3-5 "modules". Each module must have a "title" and detailed "content". The content should be a summary of a key topic from the textbook, formatted with simple HTML (<p>, <strong>, <ul>, <li>) for readability.
+        
+        Textbook Content:
+        ---
+        ${documentText.substring(0, 30000)}
+        ---
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro', // Using a more powerful model for better text comprehension
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                    description: {
+                        type: Type.STRING,
+                        description: 'A comprehensive overview of the course topic.',
+                    },
+                    modules: {
+                        type: Type.ARRAY,
+                        description: 'An array of modules for the course.',
+                        items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            title: {
+                            type: Type.STRING,
+                            description: 'The title of the module.',
+                            },
+                            content: {
+                            type: Type.STRING,
+                            description: 'The HTML content of the module.',
+                            },
+                        },
+                        required: ['title', 'content'],
+                        },
+                    },
+                    },
+                    required: ['description', 'modules'],
+                },
+            },
+        });
+
+        const jsonStr = response.text.trim();
+        const content: GeneratedContent = JSON.parse(jsonStr);
+        return content;
+    } catch (error) {
+        console.error("Gemini API Error (generateCourseFromText):", error);
+        throw new Error(String(error) || "Failed to generate course from text. The document may be too complex or the AI service is unavailable.");
+    }
 };
 
 

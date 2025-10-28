@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 // A generic icon props interface to allow passing className and other props
@@ -183,6 +182,13 @@ export const CameraIcon: React.FC<IconProps> = (props) => (
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
     </svg>
 );
+
+export const ArrowUpTrayIcon: React.FC<IconProps> = (props) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+    </svg>
+);
+
 
 // Social Media Icons
 export const FacebookIcon: React.FC<IconProps> = (props) => (

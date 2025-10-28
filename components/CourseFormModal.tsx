@@ -1,9 +1,11 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Course, Module, QuizQuestion, Toast } from '../types';
-import { generateCourseContent, generateQuiz } from '../services/geminiService';
-import { SparklesIcon, PlusIcon, TrashIcon, BookOpenIcon } from './icons';
+import { generateCourseContent, generateQuiz, generateCourseFromText } from '../services/geminiService';
+import { SparklesIcon, PlusIcon, TrashIcon, ArrowUpTrayIcon } from './icons';
 import { supabase } from '../services/supabaseClient';
+
+// This library is loaded from a CDN script in index.html
+declare const pdfjsLib: any;
 
 interface CourseFormModalProps {
   isOpen: boolean;
@@ -19,13 +21,9 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
   const [modules, setModules] = useState<Module[]>([]);
   const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [textbookUrl, setTextbookUrl] = useState<string | undefined>(undefined);
-  const [textbookName, setTextbookName] = useState<string | undefined>(undefined);
   
   const modalBodyRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
 
   useEffect(() => {
     if (isOpen) {
@@ -34,21 +32,17 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
         setDescription(course.description);
         setModules(course.modules);
         setQuiz(course.quiz);
-        setTextbookUrl(course.textbookUrl);
-        setTextbookName(course.textbookName);
       } else {
         // Reset form for new course
         setTitle('');
         setDescription('');
         setModules([]);
         setQuiz([]);
-        setTextbookUrl(undefined);
-        setTextbookName(undefined);
       }
     }
   }, [isOpen, course]);
 
-  const handleGenerateContent = async () => {
+  const handleGenerateWithAI = async () => {
     if (!title) {
         addToast("Please enter a course title to generate content with AI.", 'error');
         return;
@@ -57,7 +51,8 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
     addToast("Generating AI content... This may take a moment.", 'info');
     try {
         const content = await generateCourseContent(title);
-        const quizQuestions = await generateQuiz(content.modules.map(m => m.content).join('\n\n'));
+        const allModuleContent = content.modules.map(m => m.content).join('\n\n');
+        const quizQuestions = await generateQuiz(allModuleContent);
 
         setDescription(content.description);
         setModules(content.modules.map((m, i) => ({...m, id: `m-${Date.now()}-${i}`})));
@@ -71,6 +66,68 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
         setIsGenerating(false);
     }
   };
+
+  const handleGenerateFromPdf = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+        addToast('Invalid file type. Please upload a PDF.', 'error');
+        return;
+    }
+
+    setIsGenerating(true);
+    addToast("Processing PDF and generating course... This may take several moments.", 'info');
+
+    try {
+        const reader = new FileReader();
+        reader.onload = async (e: ProgressEvent<FileReader>) => {
+            try {
+                const typedArray = new Uint8Array(e.target?.result as ArrayBuffer);
+                
+                // Initialize pdf.js worker
+                if (typeof pdfjsLib.GlobalWorkerOptions.workerSrc === 'undefined') {
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
+                }
+
+                const pdf = await pdfjsLib.getDocument(typedArray).promise;
+                let fullText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    fullText += textContent.items.map((item: any) => item.str).join(' ');
+                }
+
+                if (!fullText.trim()) {
+                    throw new Error("Could not extract text from the PDF.");
+                }
+
+                setTitle(file.name.replace('.pdf', ''));
+                const content = await generateCourseFromText(fullText);
+                const allModuleContent = content.modules.map(m => m.content).join('\n\n');
+                const quizQuestions = await generateQuiz(allModuleContent);
+
+                setDescription(content.description);
+                setModules(content.modules.map((m, i) => ({...m, id: `m-${Date.now()}-${i}`})));
+                setQuiz(quizQuestions);
+                addToast("Course successfully generated from PDF!", 'success');
+
+            } catch (err: any) {
+                 console.error("Error during PDF processing/AI generation:", err);
+                 addToast(err.message || "An error occurred. Please try again.", 'error');
+            } finally {
+                setIsGenerating(false);
+                // Reset file input
+                if(fileInputRef.current) fileInputRef.current.value = "";
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    } catch (error: any) {
+        console.error("File Reader Error:", error);
+        addToast(error.message || "Could not read the selected file.", 'error');
+        setIsGenerating(false);
+    }
+  }
 
   const handleModuleChange = (index: number, field: 'title' | 'content', value: string) => {
     const newModules = [...modules];
@@ -107,39 +164,6 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
     setQuiz(quiz.filter((_, i) => i !== index));
   };
   
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 50 * 1024 * 1024) { // 50MB limit
-      addToast("File is too large. Please use a file smaller than 50MB.", 'error');
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-        const fileName = `textbook-${Date.now()}-${file.name}`;
-        const { data, error } = await supabase.storage
-            .from('assets')
-            .upload(`public/${fileName}`, file);
-
-        if (error) throw error;
-
-        const { data: { publicUrl } } = supabase.storage
-            .from('assets')
-            .getPublicUrl(data.path);
-        
-        setTextbookUrl(publicUrl);
-        setTextbookName(file.name);
-        addToast(`File "${file.name}" uploaded successfully.`, 'success');
-    } catch (error: any) {
-        addToast(`Failed to upload file: ${error.message}`, 'error');
-    } finally {
-        setIsUploading(false);
-    }
-  };
-
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !description) {
@@ -156,8 +180,9 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
         imageUrl: course?.imageUrl || `https://picsum.photos/seed/${title.split(' ').join('')}/600/400`,
         reviews: course?.reviews || [],
         discussion: course?.discussion || [],
-        textbookUrl,
-        textbookName,
+        // Textbook fields are deprecated in favor of AI generation from PDF
+        textbookUrl: undefined, 
+        textbookName: undefined,
     };
     onSave(finalCourse);
   };
@@ -173,26 +198,59 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
 
         <div ref={modalBodyRef} className="p-6 flex-grow overflow-y-auto">
             <form id="courseForm" onSubmit={handleSubmit}>
-              {/* Course Details */}
-              <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full text-xl font-bold p-2 border-b-2 border-slate-200 focus:outline-none focus:border-zamzam-teal-500"
-                  placeholder="Course Title (e.g., Introduction to Takaful)"
-                />
-                <button
-                    type="button"
-                    onClick={handleGenerateContent}
-                    disabled={isGenerating}
-                    className="flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-zamzam-teal-600 rounded-md hover:bg-zamzam-teal-700 transition disabled:bg-slate-400"
-                >
-                    <SparklesIcon className="h-5 w-5 mr-2" />
-                    {isGenerating ? 'Generating...' : 'Generate Description, Modules & Quiz with AI'}
-                </button>
+              {/* AI Generation Tools */}
+              <div className="p-4 bg-slate-50 rounded-lg border mb-6">
+                <h3 className="font-bold text-slate-800 mb-3">AI Content Tools</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     {/* Generate from Title */}
+                    <div>
+                         <label htmlFor="courseTitle" className="block text-sm font-medium text-slate-700 mb-1">1. Generate from a title</label>
+                         <div className="flex items-center gap-2">
+                            <input
+                            type="text"
+                            id="courseTitle"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            className="w-full text-base p-2 border border-slate-300 rounded-md focus:outline-none focus:border-zamzam-teal-500"
+                            placeholder="e.g., Introduction to Takaful"
+                            />
+                            <button
+                                type="button"
+                                onClick={handleGenerateWithAI}
+                                disabled={isGenerating || !title}
+                                className="flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-zamzam-teal-600 rounded-md hover:bg-zamzam-teal-700 transition disabled:bg-slate-400"
+                            >
+                                <SparklesIcon className="h-5 w-5 mr-2" />
+                                Generate
+                            </button>
+                        </div>
+                    </div>
+                    {/* Generate from PDF */}
+                    <div>
+                        <label htmlFor="pdfUpload" className="block text-sm font-medium text-slate-700 mb-1">2. Or, generate from a textbook</label>
+                        <input
+                            type="file"
+                            accept=".pdf"
+                            ref={fileInputRef}
+                            onChange={handleGenerateFromPdf}
+                            className="hidden"
+                            disabled={isGenerating}
+                            id="pdfUpload"
+                        />
+                         <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isGenerating}
+                            className="w-full flex items-center justify-center px-4 py-2 text-sm font-semibold text-zamzam-teal-700 bg-zamzam-teal-100 rounded-md hover:bg-zamzam-teal-200 transition disabled:bg-slate-300"
+                        >
+                            <ArrowUpTrayIcon className="h-5 w-5 mr-2" />
+                            {isGenerating ? 'Processing...' : 'Upload PDF & Generate Course'}
+                        </button>
+                    </div>
+                </div>
               </div>
 
+              {/* Course Details */}
               <div className="mb-6">
                 <label htmlFor="description" className="block text-sm font-medium text-slate-700 mb-1">Description</label>
                 <textarea
@@ -201,51 +259,9 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                   onChange={(e) => setDescription(e.target.value)}
                   rows={3}
                   className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500"
+                  placeholder="Course description will appear here..."
                 ></textarea>
               </div>
-
-               {/* Textbook Upload */}
-                <div className="mb-8">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Supplementary Textbook (Optional)</label>
-                    <div className="flex items-center gap-4">
-                        <input
-                            type="file"
-                            accept=".pdf,.doc,.docx,.pptx"
-                            ref={fileInputRef}
-                            onChange={handleFileChange}
-                            className="hidden"
-                            disabled={isUploading}
-                        />
-                         <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={isUploading}
-                            className="flex items-center px-4 py-2 text-sm font-semibold text-zamzam-teal-700 bg-zamzam-teal-100 rounded-md hover:bg-zamzam-teal-200 transition disabled:bg-slate-300"
-                        >
-                            <BookOpenIcon className="h-5 w-5 mr-2" />
-                            {isUploading ? 'Uploading...' : 'Upload File'}
-                        </button>
-                        {textbookName && (
-                             <div className="flex items-center gap-2 text-sm text-slate-600">
-                                <a href={textbookUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">{textbookName}</a>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTextbookUrl(undefined);
-                                        setTextbookName(undefined);
-                                        if (fileInputRef.current) fileInputRef.current.value = "";
-                                        // Note: Does not delete from Supabase storage, just removes link from course
-                                    }}
-                                    className="text-red-500 hover:text-red-700"
-                                    aria-label="Remove textbook"
-                                >
-                                    <TrashIcon className="h-4 w-4" />
-                                </button>
-                             </div>
-                        )}
-                    </div>
-                     <p className="text-xs text-slate-500 mt-2">Upload a PDF, DOCX, or PPTX file. Max file size: 50MB.</p>
-                </div>
 
               {/* Modules */}
               <div className="mb-8">

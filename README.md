@@ -26,10 +26,9 @@ An internal e-learning website for Zamzam Bank, designed to deliver short, targe
 ### For Administrators
 - **Comprehensive Admin Dashboard**: A centralized hub for managing all aspects of the platform.
 - **Course Management (CRUD)**: Create, read, update, and delete courses.
-- **AI-Powered Content Generation**: Use the Gemini API to automatically generate:
-    - A detailed course description.
-    - Multiple structured learning modules with HTML content.
-    - A relevant final quiz with multiple-choice questions and answers.
+- **AI-Powered Content Generation**: Use the Gemini API to automatically generate content in two ways:
+    - **From a Title**: Provide a course title, and the AI generates a relevant description, modules, and a quiz.
+    - **From a Textbook (PDF)**: Upload a PDF document, and the AI reads and analyzes it to create a complete, structured course with description, modules, and a quiz automatically.
 - **User Management (CRUD)**: Manage employee accounts, approve new registrations, and edit user details.
 - **Resource Library Management**: Add, edit, and delete curated external resources (articles, books, videos).
 - **Platform Analytics**: View key statistics like total users, courses, and completions.
@@ -49,6 +48,7 @@ An internal e-learning website for Zamzam Bank, designed to deliver short, targe
 - **Backend & Database**: **Supabase** (PostgreSQL, Auth, Storage)
 - **AI Integration**: Google Gemini API (`@google/genai`)
 - **Certificate Generation**: `html2canvas`, `jspdf`
+- **PDF Parsing**: `pdf.js`
 
 ---
 
@@ -67,129 +67,269 @@ To run or deploy this application, you must configure the following environment 
 -   `SUPABASE_URL`: Your Supabase project URL.
 -   `SUPABASE_ANON_KEY`: Your Supabase project's `anon` public key.
 
-### Step 3: Set Up the Database Schema
-Go to the **SQL Editor** in your Supabase project dashboard and run the SQL script below. This will create all the necessary tables, types, and relationships.
+### Step 3: Run the Database Setup Script
+Go to the **SQL Editor** in your Supabase project dashboard. **Copy the entire SQL script below**, paste it into the editor, and click **RUN**.
 
-**COPY AND PASTE THE ENTIRE SCRIPT BELOW INTO THE SUPABASE SQL EDITOR AND RUN IT.**
-
-```sql
--- Create custom enum type for user roles
-CREATE TYPE public.user_role AS ENUM (
-    'Employee',
-    'Admin'
-);
-
--- Create the users table to store public profile information
-CREATE TABLE public.users (
-    id uuid NOT NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    name text,
-    email text UNIQUE,
-    role public.user_role DEFAULT 'Employee'::public.user_role NOT NULL,
-    approved boolean DEFAULT false NOT NULL,
-    points integer DEFAULT 0 NOT NULL,
-    badges text[] DEFAULT '{}'::text[] NOT NULL,
-    profile_image_url text,
-    created_at timestamp with time zone DEFAULT now()
-);
-
--- Create the courses table
-CREATE TABLE public.courses (
-    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
-    title text NOT NULL,
-    description text,
-    image_url text,
-    textbook_url text,
-    textbook_name text,
-    modules jsonb DEFAULT '[]'::jsonb,
-    quiz jsonb DEFAULT '[]'::jsonb,
-    discussion jsonb DEFAULT '[]'::jsonb,
-    created_at timestamp with time zone DEFAULT now()
-);
-
--- Create the reviews table
-CREATE TABLE public.reviews (
-    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
-    course_id uuid NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
-    author_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    author_name text,
-    rating integer NOT NULL,
-    comment text,
-    "timestamp" timestamp with time zone DEFAULT now()
-);
-
--- Create user progress table
-CREATE TABLE public.user_progress (
-    user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    course_id uuid NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
-    completed_modules text[] DEFAULT '{}'::text[] NOT NULL,
-    quiz_score integer,
-    rating integer,
-    recently_viewed timestamp with time zone,
-    completion_date timestamp with time zone,
-    PRIMARY KEY (user_id, course_id)
-);
-
--- Create notifications table
-CREATE TABLE public.notifications (
-    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
-    user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    type text NOT NULL,
-    message text NOT NULL,
-    read boolean DEFAULT false NOT NULL,
-    "timestamp" timestamp with time zone DEFAULT now()
-);
-
--- Create external resources table
-CREATE TABLE public.external_resources (
-    id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
-    title text NOT NULL,
-    description text,
-    url text NOT NULL,
-    type text NOT NULL,
-    created_at timestamp with time zone DEFAULT now()
-);
-
--- Create a function to increment user points safely
-CREATE OR REPLACE FUNCTION increment_points(user_id uuid, points_to_add integer)
-RETURNS void AS $$
-BEGIN
-  UPDATE public.users
-  SET points = points + points_to_add
-  WHERE id = user_id;
-END;
-$$ LANGUAGE plpgsql;
-```
-
-### Step 4: Create a Database Trigger for New Users
-When a new user signs up with Supabase Auth, an entry is created in the `auth.users` table. We need a trigger to automatically copy that user's information into our public `users` table.
-
-1.  In the Supabase Dashboard, go to **Database** -> **Triggers**.
-2.  Click **Create a new trigger**.
-3.  Choose the `users` table from the `auth` schema.
-4.  Give the function a name like `handle_new_user`.
-5.  In the SQL definition, paste the following code:
+This single script will:
+- Create all the necessary tables (`users`, `courses`, etc.).
+- Set up the required relationships and data types.
+- Create the function and trigger to automatically create user profiles on sign-up.
+- Enable Realtime on the notifications table.
+- Set up a secure starting point with basic Row Level Security policies.
 
 ```sql
--- This trigger automatically creates a profile in public.users
--- when a new user signs up in auth.users.
+-- 1. Custom Types
+create type public.user_role as enum ('Employee', 'Admin');
+
+-- 2. Tables
+create table public.users (
+  id uuid not null primary key references auth.users(id) on delete cascade,
+  name text not null,
+  email text not null unique,
+  role user_role not null default 'Employee'::user_role,
+  approved boolean not null default false,
+  points integer not null default 0,
+  badges text[] not null default '{}'::text[],
+  profile_image_url text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+comment on table public.users is 'Stores public profile information for each user.';
+
+create table public.courses (
+  id uuid not null default gen_random_uuid() primary key,
+  title text not null,
+  description text not null,
+  modules jsonb not null default '[]'::jsonb,
+  quiz jsonb not null default '[]'::jsonb,
+  image_url text,
+  discussion jsonb not null default '[]'::jsonb,
+  textbook_url text,
+  textbook_name text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+comment on table public.courses is 'Stores all course content, including modules and quizzes.';
+
+create table public.reviews (
+  id uuid not null default gen_random_uuid() primary key,
+  course_id uuid not null references public.courses(id) on delete cascade,
+  author_id uuid not null references public.users(id) on delete cascade,
+  author_name text not null,
+  rating integer not null check (rating >= 1 and rating <= 5),
+  comment text,
+  timestamp timestamp with time zone default timezone('utc'::text, now()) not null
+);
+comment on table public.reviews is 'Stores user reviews and ratings for courses.';
+
+create table public.user_progress (
+  user_id uuid not null references public.users(id) on delete cascade,
+  course_id uuid not null references public.courses(id) on delete cascade,
+  completed_modules text[] not null default '{}'::text[],
+  quiz_score integer,
+  rating integer,
+  recently_viewed timestamp with time zone,
+  completion_date timestamp with time zone,
+  primary key (user_id, course_id)
+);
+comment on table public.user_progress is 'Tracks the progress of each user in each course.';
+
+create table public.notifications (
+  id uuid not null default gen_random_uuid() primary key,
+  user_id uuid not null references public.users(id) on delete cascade,
+  type text not null,
+  message text not null,
+  timestamp timestamp with time zone default timezone('utc'::text, now()) not null,
+  read boolean not null default false
+);
+comment on table public.notifications is 'Stores notifications for users.';
+
+create table public.external_resources (
+  id uuid not null default gen_random_uuid() primary key,
+  title text not null,
+  description text not null,
+  url text not null,
+  type text not null check (type in ('book', 'article', 'video')),
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+comment on table public.external_resources is 'Stores curated external learning resources.';
+
+-- 3. User Creation Trigger
+-- This function is triggered when a new user signs up via Supabase Auth.
+-- It creates a corresponding entry in the public.users table.
+-- The first user to sign up is automatically made an Admin and approved.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  user_count integer;
+  is_first_user boolean;
 begin
-  insert into public.users (id, name, email)
+  -- Check if any user exists in the public.users table
+  select count(*) into user_count from public.users;
+  is_first_user := user_count = 0;
+
+  -- If it's the first user, make them an Admin and auto-approve them.
+  -- Otherwise, they are a regular Employee and need approval.
+  insert into public.users (id, name, email, role, approved)
   values (
     new.id,
     new.raw_user_meta_data->>'name',
-    new.email
+    new.email,
+    case when is_first_user then 'Admin'::user_role else 'Employee'::user_role end,
+    is_first_user
   );
   return new;
 end;
-```
-5.  For the "Events", check the **Insert** box.
-6.  Click **Confirm** to create the trigger.
+$$;
 
-### Step 5: Set up Supabase Storage
+
+-- Creates a trigger that fires the function on new user sign-up
+create or replace trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- 4. RPC Functions
+-- Creates a function to safely increment a user's points.
+create or replace function public.increment_points(user_id uuid, points_to_add integer)
+returns void
+language plpgsql
+as $$
+begin
+  update public.users
+  set points = points + points_to_add
+  where id = user_id;
+end;
+$$;
+
+-- New function to securely get the current user's profile
+create or replace function public.get_user_profile()
+returns table (
+  id uuid,
+  name text,
+  email text,
+  role user_role,
+  approved boolean,
+  points integer,
+  badges text[],
+  profile_image_url text,
+  created_at timestamp with time zone
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select *
+  from public.users
+  where id = auth.uid();
+$$;
+
+-- Helper function to get the role of the current user
+create or replace function public.get_my_role()
+returns user_role
+language sql
+security definer
+set search_path = public
+as $$
+  select role
+  from public.users
+  where id = auth.uid();
+$$;
+
+-- Helper function to check if the current user is approved
+create or replace function public.is_approved_user()
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select approved
+  from public.users
+  where id = auth.uid();
+$$;
+
+
+-- 5. Enable Realtime
+-- Enable realtime updates for the notifications table so users get instant alerts.
+alter table public.notifications replica identity full;
+-- This publication is created by default by Supabase, we just need to add our table
+alter publication supabase_realtime add table public.notifications;
+
+
+-- 6. Row Level Security (RLS)
+-- Enable RLS for all tables
+alter table public.users enable row level security;
+alter table public.courses enable row level security;
+alter table public.reviews enable row level security;
+alter table public.user_progress enable row level security;
+alter table public.notifications enable row level security;
+alter table public.external_resources enable row level security;
+
+-- Policies for `users` table
+create policy "Users can view their own profile." on public.users for select
+  using ( auth.uid() = id );
+create policy "Users can update their own profile." on public.users for update
+  using ( auth.uid() = id );
+create policy "Admins can manage all user profiles." on public.users for all
+  using ( public.get_my_role() = 'Admin'::user_role );
+
+-- Policies for `courses` table
+create policy "Approved users can view all courses." on public.courses for select
+  using ( public.is_approved_user() = true );
+create policy "Admins can manage courses." on public.courses for all
+  using ( public.get_my_role() = 'Admin'::user_role );
+
+-- Policies for `reviews` table
+create policy "Approved users can view all reviews." on public.reviews for select
+  using ( public.is_approved_user() = true );
+create policy "Users can insert their own reviews." on public.reviews for insert with check (auth.uid() = author_id);
+create policy "Admins can manage all reviews." on public.reviews for all
+  using ( public.get_my_role() = 'Admin'::user_role );
+
+-- Policies for `user_progress` table
+create policy "Users can view and manage their own progress." on public.user_progress for all
+  using ( auth.uid() = user_id );
+create policy "Admins can view all user progress." on public.user_progress for select
+  using ( public.get_my_role() = 'Admin'::user_role );
+
+-- Policies for `notifications` table
+create policy "Users can view their own notifications." on public.notifications for select using (auth.uid() = user_id);
+create policy "Users can update (mark as read) their own notifications." on public.notifications for update using (auth.uid() = user_id);
+create policy "Admins can create notifications for any user." on public.notifications for insert
+  with check ( public.get_my_role() = 'Admin'::user_role );
+
+-- Policies for `external_resources` table
+create policy "Approved users can view all external resources." on public.external_resources for select
+  using ( public.is_approved_user() = true );
+create policy "Admins can manage external resources." on public.external_resources for all
+  using ( public.get_my_role() = 'Admin'::user_role );
+
+
+-- 7. Storage Policies
+-- Create policies for the 'assets' bucket
+create policy "Allow public read access to assets"
+  on storage.objects for select
+  using ( bucket_id = 'assets' );
+
+create policy "Allow authenticated users to upload assets"
+  on storage.objects for insert
+  to authenticated
+  with check ( bucket_id = 'assets' );
+
+create policy "Allow owners or admins to update assets"
+  on storage.objects for update
+  using ( (auth.uid() = owner_id) or (public.get_my_role() = 'Admin'::user_role) );
+
+create policy "Allow owners or admins to delete assets"
+  on storage.objects for delete
+  using ( (auth.uid() = owner_id) or (public.get_my_role() = 'Admin'::user_role) );
+```
+
+### Step 4: Set up Supabase Storage
 1. In the Supabase Dashboard, go to **Storage**.
 2. Click **New bucket**.
 3. Name the bucket `assets` and make it a **public** bucket.
-4. Click **Create bucket**.
+4. Click **Create bucket**. The setup script already includes basic security policies for this bucket.
 
 Your application is now fully configured to work with Supabase!
 
@@ -197,14 +337,14 @@ Your application is now fully configured to work with Supabase!
 
 ## 🔐 Security Best Practices
 
-With Supabase, your application is much more secure, but for a real production environment, you must enable **Row Level Security (RLS)**.
+With Supabase, your application is much more secure, but for a real production environment, you must enable and customize **Row Level Security (RLS)**. The provided setup script enables RLS and creates a basic set of policies, which is a great starting point.
 
 -   **What is RLS?** RLS allows you to write database policies that restrict which rows users can access or modify. For example:
     -   Users should only be able to view and edit their own profile in the `users` table.
     -   Users should only be able to modify their own progress in the `user_progress` table.
     -   Only users with the 'Admin' role should be able to create or delete courses.
 -   **Why is it important?** Without RLS, any user with your `anon` key could potentially access or modify any data in your database via the API.
--   **How to enable it:** In the Supabase Dashboard, go to **Authentication** -> **Policies**. You can write SQL policies for each table to define access rules. Please consult the [Supabase RLS documentation](https://supabase.com/docs/guides/auth/row-level-security) for detailed guides.
+-   **How to customize it:** In the Supabase Dashboard, go to **Authentication** -> **Policies**. You can write or edit SQL policies for each table to define access rules. Please consult the [Supabase RLS documentation](https://supabase.com/docs/guides/auth/row-level-security) for detailed guides.
 
 ---
 
