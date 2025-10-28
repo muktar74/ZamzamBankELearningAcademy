@@ -70,19 +70,24 @@ To run or deploy this application, you must configure the following environment 
 ### Step 3: Run the Database Setup Script
 Go to the **SQL Editor** in your Supabase project dashboard. **Copy the entire SQL script below**, paste it into the editor, and click **RUN**.
 
-This single script will:
-- Create all the necessary tables (`users`, `courses`, etc.).
+This single script is **safe to run multiple times**. It will:
+- Create all the necessary tables (`users`, `courses`, etc.) if they don't already exist.
 - Set up the required relationships and data types.
-- Create the function and trigger to automatically create user profiles on sign-up.
+- Create or update the functions and triggers.
 - Enable Realtime on the notifications table.
-- Set up a secure starting point with basic Row Level Security policies.
+- Set up and enforce all Row Level Security policies, ensuring a secure starting point.
 
 ```sql
--- 1. Custom Types
-create type public.user_role as enum ('Employee', 'Admin');
+-- 1. Custom Types (Idempotent)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+        create type public.user_role as enum ('Employee', 'Admin');
+    END IF;
+END$$;
 
--- 2. Tables
-create table public.users (
+-- 2. Tables (Idempotent)
+create table if not exists public.users (
   id uuid not null primary key references auth.users(id) on delete cascade,
   name text not null,
   email text not null unique,
@@ -95,7 +100,7 @@ create table public.users (
 );
 comment on table public.users is 'Stores public profile information for each user.';
 
-create table public.courses (
+create table if not exists public.courses (
   id uuid not null default gen_random_uuid() primary key,
   title text not null,
   description text not null,
@@ -109,7 +114,7 @@ create table public.courses (
 );
 comment on table public.courses is 'Stores all course content, including modules and quizzes.';
 
-create table public.reviews (
+create table if not exists public.reviews (
   id uuid not null default gen_random_uuid() primary key,
   course_id uuid not null references public.courses(id) on delete cascade,
   author_id uuid not null references public.users(id) on delete cascade,
@@ -120,7 +125,7 @@ create table public.reviews (
 );
 comment on table public.reviews is 'Stores user reviews and ratings for courses.';
 
-create table public.user_progress (
+create table if not exists public.user_progress (
   user_id uuid not null references public.users(id) on delete cascade,
   course_id uuid not null references public.courses(id) on delete cascade,
   completed_modules text[] not null default '{}'::text[],
@@ -132,7 +137,7 @@ create table public.user_progress (
 );
 comment on table public.user_progress is 'Tracks the progress of each user in each course.';
 
-create table public.notifications (
+create table if not exists public.notifications (
   id uuid not null default gen_random_uuid() primary key,
   user_id uuid not null references public.users(id) on delete cascade,
   type text not null,
@@ -142,7 +147,7 @@ create table public.notifications (
 );
 comment on table public.notifications is 'Stores notifications for users.';
 
-create table public.external_resources (
+create table if not exists public.external_resources (
   id uuid not null default gen_random_uuid() primary key,
   title text not null,
   description text not null,
@@ -152,32 +157,30 @@ create table public.external_resources (
 );
 comment on table public.external_resources is 'Stores curated external learning resources.';
 
--- 3. User Creation Trigger
--- This function is triggered when a new user signs up via Supabase Auth.
--- It creates a corresponding entry in the public.users table.
--- The first user to sign up is automatically made an Admin and approved.
+-- 3. User Creation Trigger (Idempotent via CREATE OR REPLACE)
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
 declare
-  user_count integer;
-  is_first_user boolean;
+  -- Use a specific email address to identify the initial admin.
+  -- This is more reliable than checking if the table is empty.
+  admin_email text := 'admin@zamzambank.com';
+  is_admin_user boolean;
 begin
-  -- Check if any user exists in the public.users table
-  select count(*) into user_count from public.users;
-  is_first_user := user_count = 0;
+  -- Check if the new user's email matches the designated admin email.
+  is_admin_user := new.email = admin_email;
 
-  -- If it's the first user, make them an Admin and auto-approve them.
+  -- If it's the admin user, make them an Admin and auto-approve them.
   -- Otherwise, they are a regular Employee and need approval.
   insert into public.users (id, name, email, role, approved)
   values (
     new.id,
     new.raw_user_meta_data->>'name',
     new.email,
-    case when is_first_user then 'Admin'::user_role else 'Employee'::user_role end,
-    is_first_user
+    case when is_admin_user then 'Admin'::user_role else 'Employee'::user_role end,
+    is_admin_user -- This will be 'true' for the admin, 'false' for others.
   );
   return new;
 end;
@@ -189,7 +192,7 @@ create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- 4. RPC Functions
+-- 4. RPC Functions (Idempotent via CREATE OR REPLACE)
 -- Creates a function to safely increment a user's points.
 create or replace function public.increment_points(user_id uuid, points_to_add integer)
 returns void
@@ -249,15 +252,23 @@ as $$
 $$;
 
 
--- 5. Enable Realtime
--- Enable realtime updates for the notifications table so users get instant alerts.
+-- 5. Enable Realtime (Fully Idempotent)
 alter table public.notifications replica identity full;
--- This publication is created by default by Supabase, we just need to add our table
-alter publication supabase_realtime add table public.notifications;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND tablename = 'notifications'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+    END IF;
+END$$;
 
 
 -- 6. Row Level Security (RLS)
--- Enable RLS for all tables
+-- Enable RLS for all tables (Safe to re-run)
 alter table public.users enable row level security;
 alter table public.courses enable row level security;
 alter table public.reviews enable row level security;
@@ -265,64 +276,92 @@ alter table public.user_progress enable row level security;
 alter table public.notifications enable row level security;
 alter table public.external_resources enable row level security;
 
--- Policies for `users` table
+-- Policies for `users` table (Idempotent)
+drop policy if exists "Users can view their own profile." on public.users;
 create policy "Users can view their own profile." on public.users for select
   using ( auth.uid() = id );
+  
+drop policy if exists "Users can update their own profile." on public.users;
 create policy "Users can update their own profile." on public.users for update
   using ( auth.uid() = id );
+  
+drop policy if exists "Admins can manage all user profiles." on public.users;
 create policy "Admins can manage all user profiles." on public.users for all
   using ( public.get_my_role() = 'Admin'::user_role );
 
--- Policies for `courses` table
+-- Policies for `courses` table (Idempotent)
+drop policy if exists "Approved users can view all courses." on public.courses;
 create policy "Approved users can view all courses." on public.courses for select
   using ( public.is_approved_user() = true );
+  
+drop policy if exists "Admins can manage courses." on public.courses;
 create policy "Admins can manage courses." on public.courses for all
   using ( public.get_my_role() = 'Admin'::user_role );
 
--- Policies for `reviews` table
+-- Policies for `reviews` table (Idempotent)
+drop policy if exists "Approved users can view all reviews." on public.reviews;
 create policy "Approved users can view all reviews." on public.reviews for select
   using ( public.is_approved_user() = true );
+  
+drop policy if exists "Users can insert their own reviews." on public.reviews;
 create policy "Users can insert their own reviews." on public.reviews for insert with check (auth.uid() = author_id);
+
+drop policy if exists "Admins can manage all reviews." on public.reviews;
 create policy "Admins can manage all reviews." on public.reviews for all
   using ( public.get_my_role() = 'Admin'::user_role );
 
--- Policies for `user_progress` table
+-- Policies for `user_progress` table (Idempotent)
+drop policy if exists "Users can view and manage their own progress." on public.user_progress;
 create policy "Users can view and manage their own progress." on public.user_progress for all
   using ( auth.uid() = user_id );
+
+drop policy if exists "Admins can view all user progress." on public.user_progress;
 create policy "Admins can view all user progress." on public.user_progress for select
   using ( public.get_my_role() = 'Admin'::user_role );
 
--- Policies for `notifications` table
+-- Policies for `notifications` table (Idempotent)
+drop policy if exists "Users can view their own notifications." on public.notifications;
 create policy "Users can view their own notifications." on public.notifications for select using (auth.uid() = user_id);
+
+drop policy if exists "Users can update (mark as read) their own notifications." on public.notifications;
 create policy "Users can update (mark as read) their own notifications." on public.notifications for update using (auth.uid() = user_id);
+
+drop policy if exists "Admins can create notifications for any user." on public.notifications;
 create policy "Admins can create notifications for any user." on public.notifications for insert
   with check ( public.get_my_role() = 'Admin'::user_role );
 
--- Policies for `external_resources` table
+-- Policies for `external_resources` table (Idempotent)
+drop policy if exists "Approved users can view all external resources." on public.external_resources;
 create policy "Approved users can view all external resources." on public.external_resources for select
   using ( public.is_approved_user() = true );
+
+drop policy if exists "Admins can manage external resources." on public.external_resources;
 create policy "Admins can manage external resources." on public.external_resources for all
   using ( public.get_my_role() = 'Admin'::user_role );
 
 
--- 7. Storage Policies
+-- 7. Storage Policies (Idempotent)
 -- Create policies for the 'assets' bucket
+drop policy if exists "Allow public read access to assets" on storage.objects;
 create policy "Allow public read access to assets"
   on storage.objects for select
   using ( bucket_id = 'assets' );
 
+drop policy if exists "Allow authenticated users to upload assets" on storage.objects;
 create policy "Allow authenticated users to upload assets"
   on storage.objects for insert
   to authenticated
   with check ( bucket_id = 'assets' );
 
+drop policy if exists "Allow owners or admins to update assets" on storage.objects;
 create policy "Allow owners or admins to update assets"
   on storage.objects for update
-  using ( (auth.uid() = owner_id) or (public.get_my_role() = 'Admin'::user_role) );
+  using ( (auth.uid() = owner) or (public.get_my_role() = 'Admin'::user_role) );
 
+drop policy if exists "Allow owners or admins to delete assets" on storage.objects;
 create policy "Allow owners or admins to delete assets"
   on storage.objects for delete
-  using ( (auth.uid() = owner_id) or (public.get_my_role() = 'Admin'::user_role) );
+  using ( (auth.uid() = owner) or (public.get_my_role() = 'Admin'::user_role) );
 ```
 
 ### Step 4: Set up Supabase Storage

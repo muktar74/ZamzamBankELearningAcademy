@@ -9,8 +9,41 @@ import AiAssistant from './AiAssistant';
 
 interface HomePageProps {
   setPage: (page: 'home' | 'login' | 'register') => void;
-  courses: Course[];
 }
+
+const featuredCourses: Course[] = [
+  {
+    id: 'featured-1',
+    title: 'Digital Marketing in Finance',
+    description: 'Learn how to apply modern digital marketing strategies within the financial sector to reach and engage customers.',
+    imageUrl: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?q=80&w=600&auto=format&fit=crop',
+    modules: [],
+    quiz: [],
+    reviews: [],
+    discussion: [],
+  },
+  {
+    id: 'featured-2',
+    title: 'Cybersecurity for Banking',
+    description: 'Understand the critical threats to the banking industry and learn the best practices to secure financial data and systems.',
+    imageUrl: 'https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?q=80&w=600&auto=format&fit=crop',
+    modules: [],
+    quiz: [],
+    reviews: [],
+    discussion: [],
+  },
+  {
+    id: 'featured-3',
+    title: 'Advanced Islamic Finance (IFB)',
+    description: 'A deep dive into complex Islamic financial instruments, structures, and modern applications in the banking sector.',
+    imageUrl: 'https://images.unsplash.com/photo-1627895513511-23521b6a1f3b?q=80&w=600&auto=format&fit=crop',
+    modules: [],
+    quiz: [],
+    reviews: [],
+    discussion: [],
+  }
+];
+
 
 const Feature: React.FC<{ icon: React.ReactNode; title: string; description: string }> = ({ icon, title, description }) => (
     <div className="text-center">
@@ -23,7 +56,7 @@ const Feature: React.FC<{ icon: React.ReactNode; title: string; description: str
 );
 
 
-const HomePage: React.FC<HomePageProps> = ({ setPage, courses }) => {
+const HomePage: React.FC<HomePageProps> = ({ setPage }) => {
   const [aiChatHistory, setAiChatHistory] = useState<AiMessage[]>([]);
 
   return (
@@ -92,7 +125,7 @@ const HomePage: React.FC<HomePageProps> = ({ setPage, courses }) => {
                     <p className="text-lg text-slate-600 mt-2">Get a glimpse of the valuable knowledge waiting for you.</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {courses.map(course => (
+                {featuredCourses.map(course => (
                     <CourseCard
                     key={course.id}
                     course={course}

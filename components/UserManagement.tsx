@@ -65,31 +65,59 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, setUsers, create
             addToast('Password is required for new users.', 'error');
             throw new Error('Password is required');
         }
-        const { data, error: signUpError } = await supabase.auth.signUp({
+        
+        // --- FIX START: Preserve admin session during new user creation ---
+
+        // 1. Get the current admin's session to restore it later.
+        const { data: { session: adminSession } } = await supabase.auth.getSession();
+        if (!adminSession) {
+            addToast('Admin session expired. Please log in again.', 'error');
+            throw new Error('Admin session not found');
+        }
+
+        // 2. Create the new user. This temporarily signs out the admin and signs in the new user.
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: user.email,
             password: password,
             options: { data: { name: user.name } }
         });
+
+        // 3. Immediately restore the admin's session. This is critical.
+        const { error: sessionError } = await supabase.auth.setSession({
+            access_token: adminSession.access_token,
+            refresh_token: adminSession.refresh_token,
+        });
+
+        if (sessionError) {
+             addToast('Could not restore admin session. Please refresh and try again.', 'error');
+             throw sessionError;
+        }
+
+        // Now handle the outcome of the signUp process
         if (signUpError) {
             addToast(signUpError.message, 'error');
-            throw signUpError;
+            throw signUpError; // Propagate error to modal to stop loading spinner
         }
-        if (data.user) {
-            // New user is created by trigger, now approve them
-            const { error: updateError } = await supabase.from('users').update({ approved: true }).eq('id', data.user.id);
+
+        if (signUpData.user) {
+            // 4. Now authenticated as the admin again, approve the new user.
+            const { error: updateError } = await supabase.from('users').update({ approved: true }).eq('id', signUpData.user.id);
             if (updateError) {
                 addToast(`User created but failed to approve: ${updateError.message}`, 'error');
             }
-            // Add user to local state after fetching the full profile
-             const { data: profile, error: profileError } = await supabase.from('users').select('*').eq('id', data.user.id).single();
+
+            // 5. Fetch the new user's full profile to add to the local state.
+            const { data: profile, error: profileError } = await supabase.from('users').select('*').eq('id', signUpData.user.id).single();
             if (profileError || !profile) {
-                addToast('User created, but failed to fetch profile for local state.', 'error');
+                addToast('User created, but failed to refresh user list.', 'error');
             } else {
                 setUsers(prev => [...prev, profile]);
+                addToast('User created and approved successfully!', 'success');
             }
-            addToast('User created and approved successfully.', 'success');
-            handleCloseModal();
         }
+        // --- FIX END ---
+        
+        handleCloseModal();
     }
   };
   

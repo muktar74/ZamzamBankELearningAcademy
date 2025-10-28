@@ -1,11 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-// --- URGENT FIX ---
-// The application was failing to load environment variables, causing it to
-// connect to the wrong database. To immediately resolve the user's login issue,
-// the client is now hardcoded to connect to their specific Supabase project.
-// In a real-world scenario, these should always be stored securely in
-// environment variables, not in the source code.
+// --- User-Specific Configuration ---
+// Hardcoding credentials as requested for the user's specific project.
 const supabaseUrl = 'https://fpffhshknnjfukxljryv.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZmZoc2hrbm5qZnVreGxqcnl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1NDIyMjcsImV4cCI6MjA3NzExODIyN30.t7XeZXxGjErP2w-JYLeSzfpmLqQLj0sriFgwp0V-bVI';
 

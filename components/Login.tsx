@@ -15,8 +15,15 @@ const Login: React.FC<LoginProps> = ({ onLogin, setPage }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    await onLogin(email, password);
-    setIsLoading(false);
+    try {
+      await onLogin(email, password);
+      // On success, the main App component will handle navigation,
+      // and this component will unmount. No need to reset state here.
+    } catch (error) {
+      // If onLogin throws an error, we catch it here and reset the loading state
+      // so the user can try again.
+      setIsLoading(false);
+    }
   };
 
   return (
