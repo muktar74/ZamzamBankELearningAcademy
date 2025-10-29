@@ -94,18 +94,18 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
         modules: course.modules,
         quiz: course.quiz,
         image_url: course.imageUrl,
-        textbook_url: course.textbookUrl,
-        textbook_name: course.textbookName,
         discussion: course.discussion,
+        category: course.category,
+        passing_score: course.passingScore
     };
 
     if (isNewCourse) {
-        const { data: newCourse, error } = await supabase.from('courses').insert(courseData).select().single();
+        const { data: newCourse, error } = await supabase.from('courses').insert(courseData).select('*, reviews(*)').single();
         if (error) {
             addToast(`Error creating course: ${error.message}`, 'error');
-            return;
+            throw error;
         }
-        setCourses(prev => [...prev, newCourse as Course]);
+        setCourses(prev => [{...newCourse, reviews: []} as Course, ...prev]);
         users.forEach(u => {
             if(u.role === UserRole.EMPLOYEE) {
                 createNotification(u.id, NotificationType.NEW_COURSE, `A new course has been added: "${course.title}"`);
@@ -113,16 +113,14 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
         });
         addToast('Course created successfully!', 'success');
     } else {
-        const { error } = await supabase.from('courses').update(courseData).eq('id', course.id);
+        const { data: updatedCourse, error } = await supabase.from('courses').update(courseData).eq('id', editingCourse!.id).select('*, reviews(*)').single();
         if (error) {
             addToast(`Error updating course: ${error.message}`, 'error');
-            return;
+            throw error;
         }
-        setCourses(prev => prev.map(c => c.id === course.id ? course : c));
+        setCourses(prev => prev.map(c => c.id === editingCourse!.id ? { ...c, ...updatedCourse } as Course : c));
         addToast('Course updated successfully.', 'success');
     }
-    
-    handleCloseModal();
   };
   
   const handleDeleteCourse = (courseId: string) => {
@@ -195,7 +193,10 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
                     <tbody className="bg-white divide-y divide-slate-200">
                         {filteredAndSortedCourses.map(course => (
                         <tr key={course.id}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{course.title}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm font-medium text-slate-900">{course.title}</div>
+                                <div className="text-xs text-slate-500">{course.category}</div>
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center hidden sm:table-cell">{course.modules.length}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center hidden md:table-cell">{course.quiz.length}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">

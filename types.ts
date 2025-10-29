@@ -29,7 +29,8 @@ export interface QuizQuestion {
 export interface Module {
   id: string;
   title: string;
-  content: string;
+  type: 'text' | 'video';
+  content: string; // Contains HTML for 'text' or a video embed URL for 'video'
 }
 
 export interface DiscussionPost {
@@ -54,8 +55,10 @@ export interface Course {
   id:string;
   title: string;
   description: string;
+  category: string;
   modules: Module[];
   quiz: QuizQuestion[];
+  passingScore: number;
   imageUrl: string;
   reviews: Review[];
   discussion: DiscussionPost[];

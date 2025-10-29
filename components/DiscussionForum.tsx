@@ -51,7 +51,7 @@ const Post: React.FC<PostProps> = ({ post, onReply, currentUser, isReply = false
                             value={replyText}
                             onChange={e => setReplyText(e.target.value)}
                             placeholder="Write a reply..."
-                            className="w-full text-sm px-3 py-1 border border-slate-300 rounded-full focus:outline-none focus:ring-1 focus:ring-zamzam-teal-500 bg-slate-100"
+                            className="w-full text-sm px-3 py-1 border border-slate-300 rounded-full focus:outline-none focus:ring-1 focus:ring-zamzam-teal-500 bg-white"
                         />
                         <button type="submit" className="bg-zamzam-teal-600 text-white p-2 rounded-full hover:bg-zamzam-teal-700 transition">
                             <PaperAirplaneIcon className="w-4 h-4" />
@@ -160,7 +160,7 @@ const DiscussionForum: React.FC<DiscussionForumProps> = ({ courseId, posts, curr
                     onChange={(e) => setNewPostText(e.target.value)}
                     placeholder="Start a new discussion..."
                     rows={2}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                 />
                 <button type="submit" className="bg-zamzam-teal-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-zamzam-teal-700 transition self-start">
                     Post

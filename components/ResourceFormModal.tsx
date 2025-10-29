@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ExternalResource, Toast } from '../types';
 
@@ -55,7 +56,7 @@ const ResourceFormModal: React.FC<ResourceFormModalProps> = ({ isOpen, onClose, 
                         id="title"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-50"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                         required
                         />
                     </div>
@@ -66,7 +67,7 @@ const ResourceFormModal: React.FC<ResourceFormModalProps> = ({ isOpen, onClose, 
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             rows={3}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-50"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                             required
                         />
                     </div>
@@ -77,7 +78,7 @@ const ResourceFormModal: React.FC<ResourceFormModalProps> = ({ isOpen, onClose, 
                         id="url"
                         value={url}
                         onChange={(e) => setUrl(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-50"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                         placeholder="https://example.com/resource"
                         required
                         />
@@ -88,7 +89,7 @@ const ResourceFormModal: React.FC<ResourceFormModalProps> = ({ isOpen, onClose, 
                             id="type"
                             value={type}
                             onChange={(e) => setType(e.target.value as ExternalResource['type'])}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-50"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                         >
                             <option value="article">Article</option>
                             <option value="book">Book</option>

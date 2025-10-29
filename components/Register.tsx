@@ -44,7 +44,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, setPage }) => {
             onChange={(e) => setName(e.target.value)}
             required
             autoComplete="name"
-            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
             placeholder="Aisha Ahmed"
           />
         </div>
@@ -59,7 +59,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, setPage }) => {
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
-            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
             placeholder="aisha.ahmed@zamzambank.com"
           />
         </div>
@@ -74,7 +74,7 @@ const Register: React.FC<RegisterProps> = ({ onRegister, setPage }) => {
             onChange={(e) => setPassword(e.target.value)}
             required
             autoComplete="new-password"
-            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
             placeholder="••••••••"
           />
         </div>

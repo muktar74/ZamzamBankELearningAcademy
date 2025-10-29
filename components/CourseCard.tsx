@@ -55,6 +55,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, progress, onSelectCours
         )}
       </div>
       <div className="p-6 flex-grow flex flex-col">
+        <p className="text-xs font-semibold text-zamzam-teal-600 uppercase mb-1">{course.category || 'General'}</p>
         <h3 className="text-xl font-bold text-slate-800 mb-2 group-hover:text-zamzam-teal-600 transition-colors">{course.title}</h3>
         <p className="text-slate-600 text-sm flex-grow">{course.description}</p>
         

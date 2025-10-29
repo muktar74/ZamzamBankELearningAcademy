@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { User, Course, UserRole, UserProgress, CertificateData, Notification, NotificationType, AiMessage, Review, Toast as ToastType, AllUserProgress, ExternalResource } from './types';
 import { BADGE_DEFINITIONS } from './constants';
@@ -285,21 +286,18 @@ const App: React.FC = () => {
   const handleCourseComplete = useCallback(async (course: Course, score: number) => {
     if (!currentUser) return;
     
-    const isFirstCompletion = (allUserProgress[currentUser.id]?.[course.id]?.quizScore) === null;
-    
-    const progressUpdate = {
+    // Always save the latest quiz score
+    const { error: progressSaveError } = await supabase.from('user_progress').upsert({
         user_id: currentUser.id,
         course_id: course.id,
         quiz_score: score,
-        completion_date: isFirstCompletion ? new Date().toISOString() : allUserProgress[currentUser.id]?.[course.id]?.completionDate
-    };
-    
-    const { error } = await supabase.from('user_progress').upsert(progressUpdate);
-    if(error) {
-        addToast(`Error saving completion: ${error.message}`, 'error');
+    });
+
+    if (progressSaveError) {
+        addToast(`Error saving quiz score: ${progressSaveError.message}`, 'error');
         return;
     }
-    
+
     setAllUserProgress(prev => ({
         ...prev,
         [currentUser.id]: {
@@ -307,36 +305,69 @@ const App: React.FC = () => {
             [course.id]: {
                 ...prev[currentUser.id]?.[course.id],
                 quizScore: score,
-                completionDate: progressUpdate.completion_date,
             }
         }
     }));
+    
+    // Check if the user passed
+    if (score < course.passingScore) {
+        addToast(`You scored ${score}%. The passing score is ${course.passingScore}%. Please review the material and try again.`, 'error');
+        setView('course'); // Stay on the course view
+        return;
+    }
+    
+    // --- PASSED ---
+    addToast(`Congratulations, you passed with a score of ${score}%!`, 'success');
+
+    const isFirstCompletion = !allUserProgress[currentUser.id]?.[course.id]?.completionDate;
+    const completionDate = isFirstCompletion ? new Date().toISOString() : allUserProgress[currentUser.id]?.[course.id]?.completionDate;
 
     if (isFirstCompletion) {
-        await awardPoints(currentUser.id, 100);
-        await createNotification(currentUser.id, NotificationType.CERTIFICATE, `Congratulations! You earned a certificate for "${course.title}".`);
+        const { error } = await supabase.from('user_progress').upsert({
+            user_id: currentUser.id,
+            course_id: course.id,
+            completion_date: completionDate
+        });
+        if (error) {
+            addToast(`Error saving completion date: ${error.message}`, 'error');
+        } else {
+             setAllUserProgress(prev => ({
+                ...prev,
+                [currentUser.id]: {
+                    ...prev[currentUser.id],
+                    [course.id]: { ...prev[currentUser.id]?.[course.id], completionDate }
+                }
+            }));
+            await awardPoints(currentUser.id, 100);
+            await createNotification(currentUser.id, NotificationType.CERTIFICATE, `Congratulations! You earned a certificate for "${course.title}".`);
+        }
     }
 
     setCertificateData({
       courseId: course.id,
       employeeName: currentUser.name,
       courseName: course.title,
-      completionDate: new Date(progressUpdate.completion_date!).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      completionDate: new Date(completionDate!).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     });
     setCurrentView('certificate');
 
-    const userProgress = allUserProgress[currentUser.id] || {};
-    const completedCourses = Object.keys(userProgress).filter(cId => userProgress[cId].quizScore !== null);
-    if (!completedCourses.includes(course.id)) {
-        completedCourses.push(course.id);
-    }
+    // Check for new badges
+    const userProgressAfterUpdate = { // Use fresh data for badge calculation
+        ...allUserProgress,
+        [currentUser.id]: {
+            ...allUserProgress[currentUser.id],
+            [course.id]: { ...allUserProgress[currentUser.id]?.[course.id], quizScore: score, completionDate }
+        }
+    };
+    // FIX: Explicitly type 'p' to avoid accessing property on 'unknown' type.
+    const completedCourses = Object.values(userProgressAfterUpdate[currentUser.id] || {}).filter((p: { completionDate?: string }) => p.completionDate);
     const completedCount = completedCourses.length;
 
     const newBadges: string[] = [];
     if (completedCount >= 1 && !currentUser.badges.includes('first-course')) newBadges.push('first-course');
     if (completedCount >= 3 && !currentUser.badges.includes('prolific-learner')) newBadges.push('prolific-learner');
     if (score === 100 && !currentUser.badges.includes('quiz-master')) newBadges.push('quiz-master');
-    if (completedCount === courses.length && !currentUser.badges.includes('completionist')) newBadges.push('completionist');
+    if (courses.length > 0 && completedCount === courses.length && !currentUser.badges.includes('completionist')) newBadges.push('completionist');
 
     if (newBadges.length > 0) {
         let pointsToAddForBadges = 0;
@@ -355,11 +386,13 @@ const App: React.FC = () => {
         
         await awardPoints(currentUser.id, pointsToAddForBadges);
 
+        setCurrentUser(prev => prev ? { ...prev, badges: updatedBadges } : null);
         setUsers(prevUsers => prevUsers.map(u => 
-            u.id === currentUser.id ? { ...u, badges: updatedBadges } : u
+            u.id === currentUser.id ? { ...u, badges: updatedBadges, points: u.points + pointsToAddForBadges } : u
         ));
     }
   }, [currentUser, allUserProgress, awardPoints, createNotification, courses, addToast]);
+
 
   const updateProgress = useCallback(async (courseId: string, moduleId: string) => {
     if (!currentUser) return;

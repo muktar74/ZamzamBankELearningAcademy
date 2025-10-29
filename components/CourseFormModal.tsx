@@ -3,6 +3,7 @@ import { Course, Module, QuizQuestion, Toast } from '../types';
 import { generateCourseContent, generateQuiz, generateCourseFromText } from '../services/geminiService';
 import { SparklesIcon, PlusIcon, TrashIcon, ArrowUpTrayIcon } from './icons';
 import { supabase } from '../services/supabaseClient';
+import { COURSE_CATEGORIES } from '../constants';
 
 // This library is loaded from a CDN script in index.html
 declare const pdfjsLib: any;
@@ -10,7 +11,7 @@ declare const pdfjsLib: any;
 interface CourseFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (course: Course) => void;
+  onSave: (course: Course) => Promise<void>;
   course: Course | null;
   addToast: (message: string, type: Toast['type']) => void;
 }
@@ -18,9 +19,12 @@ interface CourseFormModalProps {
 const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSave, course, addToast }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState(COURSE_CATEGORIES[0]);
+  const [passingScore, setPassingScore] = useState(70);
   const [modules, setModules] = useState<Module[]>([]);
   const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   const modalBodyRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -30,15 +34,21 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
       if (course) {
         setTitle(course.title);
         setDescription(course.description);
+        setCategory(course.category || COURSE_CATEGORIES[0]);
+        setPassingScore(course.passingScore || 70);
         setModules(course.modules);
         setQuiz(course.quiz);
       } else {
         // Reset form for new course
         setTitle('');
         setDescription('');
+        setCategory(COURSE_CATEGORIES[0]);
+        setPassingScore(70);
         setModules([]);
         setQuiz([]);
       }
+      setIsSaving(false);
+      setIsGenerating(false);
     }
   }, [isOpen, course]);
 
@@ -55,7 +65,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
         const quizQuestions = await generateQuiz(allModuleContent);
 
         setDescription(content.description);
-        setModules(content.modules.map((m, i) => ({...m, id: `m-${Date.now()}-${i}`})));
+        setModules(content.modules.map((m, i) => ({...m, id: `m-${Date.now()}-${i}`, type: 'text'})));
         setQuiz(quizQuestions);
         addToast("AI content and quiz generated successfully!", 'success');
 
@@ -85,7 +95,6 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
             try {
                 const typedArray = new Uint8Array(e.target?.result as ArrayBuffer);
                 
-                // Initialize pdf.js worker
                 if (typeof pdfjsLib.GlobalWorkerOptions.workerSrc === 'undefined') {
                     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
                 }
@@ -108,7 +117,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                 const quizQuestions = await generateQuiz(allModuleContent);
 
                 setDescription(content.description);
-                setModules(content.modules.map((m, i) => ({...m, id: `m-${Date.now()}-${i}`})));
+                setModules(content.modules.map((m, i) => ({...m, id: `m-${Date.now()}-${i}`, type: 'text'})));
                 setQuiz(quizQuestions);
                 addToast("Course successfully generated from PDF!", 'success');
 
@@ -117,7 +126,6 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                  addToast(err.message || "An error occurred. Please try again.", 'error');
             } finally {
                 setIsGenerating(false);
-                // Reset file input
                 if(fileInputRef.current) fileInputRef.current.value = "";
             }
         };
@@ -129,14 +137,14 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
     }
   }
 
-  const handleModuleChange = (index: number, field: 'title' | 'content', value: string) => {
+  const handleModuleChange = (index: number, field: keyof Module, value: string) => {
     const newModules = [...modules];
     newModules[index] = { ...newModules[index], [field]: value };
     setModules(newModules);
   };
 
   const addModule = () => {
-    setModules([...modules, { id: `m-new-${Date.now()}`, title: '', content: '' }]);
+    setModules([...modules, { id: `m-new-${Date.now()}`, title: '', content: '', type: 'text' }]);
     setTimeout(() => modalBodyRef.current?.scrollTo({ top: modalBodyRef.current.scrollHeight, behavior: 'smooth' }), 100);
   };
 
@@ -164,27 +172,42 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
     setQuiz(quiz.filter((_, i) => i !== index));
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !description) {
         addToast("Title and Description are required.", 'error');
         return;
     }
+    if (passingScore < 0 || passingScore > 100) {
+        addToast("Passing score must be between 0 and 100.", 'error');
+        return;
+    }
 
     const finalCourse: Course = {
-        id: course?.id || `course-${Date.now()}`,
+        id: course?.id || '',
         title,
         description,
+        category,
+        passingScore,
         modules,
         quiz,
-        imageUrl: course?.imageUrl || `https://picsum.photos/seed/${title.split(' ').join('')}/600/400`,
+        imageUrl: course?.imageUrl || `https://picsum.photos/seed/${title.replace(/\s/g, '')}/600/400`,
         reviews: course?.reviews || [],
         discussion: course?.discussion || [],
-        // Textbook fields are deprecated in favor of AI generation from PDF
         textbookUrl: undefined, 
         textbookName: undefined,
     };
-    onSave(finalCourse);
+    
+    setIsSaving(true);
+    try {
+        await onSave(finalCourse);
+        onClose(); // Close on success
+    } catch (error) {
+        // Parent component's onSave function is responsible for toasting specific errors.
+        // This catch block prevents the app from crashing and allows the 'finally' to run.
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -198,20 +221,18 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
 
         <div ref={modalBodyRef} className="p-6 flex-grow overflow-y-auto">
             <form id="courseForm" onSubmit={handleSubmit}>
-              {/* AI Generation Tools */}
               <div className="p-4 bg-slate-50 rounded-lg border mb-6">
                 <h3 className="font-bold text-slate-800 mb-3">AI Content Tools</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     {/* Generate from Title */}
                     <div>
-                         <label htmlFor="courseTitle" className="block text-sm font-medium text-slate-700 mb-1">1. Generate from a title</label>
+                         <label htmlFor="courseTitleForAI" className="block text-sm font-medium text-slate-700 mb-1">1. Generate from a title</label>
                          <div className="flex items-center gap-2">
                             <input
                             type="text"
-                            id="courseTitle"
+                            id="courseTitleForAI"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            className="w-full text-base p-2 border border-slate-300 rounded-md focus:outline-none focus:border-zamzam-teal-500"
+                            className="w-full text-base p-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                             placeholder="e.g., Introduction to Takaful"
                             />
                             <button
@@ -225,18 +246,9 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                             </button>
                         </div>
                     </div>
-                    {/* Generate from PDF */}
                     <div>
                         <label htmlFor="pdfUpload" className="block text-sm font-medium text-slate-700 mb-1">2. Or, generate from a textbook</label>
-                        <input
-                            type="file"
-                            accept=".pdf"
-                            ref={fileInputRef}
-                            onChange={handleGenerateFromPdf}
-                            className="hidden"
-                            disabled={isGenerating}
-                            id="pdfUpload"
-                        />
+                        <input type="file" accept=".pdf" ref={fileInputRef} onChange={handleGenerateFromPdf} className="hidden" disabled={isGenerating} id="pdfUpload"/>
                          <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
@@ -251,17 +263,29 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
               </div>
 
               {/* Course Details */}
-              <div className="mb-6">
-                <label htmlFor="description" className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                <textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500"
-                  placeholder="Course description will appear here..."
-                ></textarea>
+              <div className="mb-4">
+                 <label htmlFor="courseTitle" className="block text-sm font-medium text-slate-700 mb-1">Course Title</label>
+                 <input type="text" id="courseTitle" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white" required />
               </div>
+
+              <div className="mb-4">
+                <label htmlFor="description" className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white" required ></textarea>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label htmlFor="category" className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                  <select id="category" value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white">
+                      {COURSE_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  </select>
+                </div>
+                <div>
+                   <label htmlFor="passingScore" className="block text-sm font-medium text-slate-700 mb-1">Passing Score (%)</label>
+                   <input type="number" id="passingScore" value={passingScore} onChange={e => setPassingScore(parseInt(e.target.value))} min="0" max="100" className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white" required />
+                </div>
+              </div>
+
 
               {/* Modules */}
               <div className="mb-8">
@@ -273,8 +297,16 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                                   <label className="font-semibold">Module {index + 1}</label>
                                   <button type="button" onClick={() => removeModule(index)} className="text-red-500 hover:text-red-700"><TrashIcon className="h-5 w-5"/></button>
                               </div>
-                              <input type="text" value={mod.title} onChange={e => handleModuleChange(index, 'title', e.target.value)} placeholder="Module Title" className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md"/>
-                              <textarea value={mod.content} onChange={e => handleModuleChange(index, 'content', e.target.value)} placeholder="Module Content (Use HTML for formatting, e.g., <p>, <a>, <img>, <iframe>)" rows={6} className="w-full px-3 py-2 border border-slate-300 rounded-md"/>
+                              <input type="text" value={mod.title} onChange={e => handleModuleChange(index, 'title', e.target.value)} placeholder="Module Title" className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md bg-white"/>
+                              <select value={mod.type} onChange={e => handleModuleChange(index, 'type', e.target.value)} className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md bg-white">
+                                <option value="text">Text / HTML</option>
+                                <option value="video">Video</option>
+                              </select>
+                              {mod.type === 'video' ? (
+                                <input type="url" value={mod.content} onChange={e => handleModuleChange(index, 'content', e.target.value)} placeholder="Video Embed URL (e.g., from YouTube, Vimeo)" className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"/>
+                              ) : (
+                                <textarea value={mod.content} onChange={e => handleModuleChange(index, 'content', e.target.value)} placeholder="Module Content (Use HTML for formatting)" rows={6} className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"/>
+                              )}
                           </div>
                       ))}
                   </div>
@@ -291,11 +323,11 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                                   <label className="font-semibold">Question {qIndex + 1}</label>
                                   <button type="button" onClick={() => removeQuizQuestion(qIndex)} className="text-red-500 hover:text-red-700"><TrashIcon className="h-5 w-5"/></button>
                               </div>
-                              <textarea value={q.question} onChange={e => handleQuizChange(qIndex, 'question', e.target.value)} placeholder="Question Text" rows={2} className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md"/>
+                              <textarea value={q.question} onChange={e => handleQuizChange(qIndex, 'question', e.target.value)} placeholder="Question Text" rows={2} className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md bg-white"/>
                               {q.options.map((opt, optIndex) => (
                                   <div key={optIndex} className="flex items-center space-x-2 mb-2">
                                       <input type="radio" name={`correct-${qIndex}`} checked={q.correctAnswer === opt} onChange={() => handleQuizChange(qIndex, 'correctAnswer', opt)} className="h-4 w-4 text-zamzam-teal-600 focus:ring-zamzam-teal-500"/>
-                                      <input type="text" value={opt} onChange={e => handleQuizChange(qIndex, 'options', e.target.value, optIndex)} placeholder={`Option ${optIndex + 1}`} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"/>
+                                      <input type="text" value={opt} onChange={e => handleQuizChange(qIndex, 'options', e.target.value, optIndex)} placeholder={`Option ${optIndex + 1}`} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white"/>
                                   </div>
                               ))}
                           </div>
@@ -310,8 +342,8 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300 transition">
                 Cancel
             </button>
-            <button type="submit" form="courseForm" className="px-6 py-2 text-sm font-semibold text-white bg-zamzam-teal-600 rounded-md hover:bg-zamzam-teal-700 transition">
-                {course ? 'Save Changes' : 'Create Course'}
+            <button type="submit" form="courseForm" disabled={isSaving || isGenerating} className="px-6 py-2 text-sm font-semibold text-white bg-zamzam-teal-600 rounded-md hover:bg-zamzam-teal-700 transition disabled:bg-slate-400">
+                {isSaving ? 'Saving...' : (course ? 'Save Changes' : 'Create Course')}
             </button>
         </div>
       </div>

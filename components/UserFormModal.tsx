@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, Toast } from '../types';
 
@@ -70,7 +71,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
               required
             />
           </div>
@@ -81,7 +82,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
               id="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white disabled:bg-slate-100"
               required
               disabled={!!user} // prevent changing email for existing user
             />
@@ -94,7 +95,7 @@ const UserFormModal: React.FC<UserFormModalProps> = ({ isOpen, onClose, onSave, 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required={!user} // Password is required only for new users
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                 placeholder={user ? "Enter new password to change" : "Create a password"}
             />
             {user && <p className="text-xs text-slate-500 mt-1">Leave blank to keep the current password.</p>}

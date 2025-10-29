@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Course, UserProgress, User, Badge } from '../types';
 import CourseCard from './CourseCard';
 import { SearchIcon, TrophyIcon, BookOpenIcon as LibraryIcon, ShieldCheckIcon } from './icons';
-import { BADGE_DEFINITIONS } from '../constants';
+import { BADGE_DEFINITIONS, COURSE_CATEGORIES } from '../constants';
 
 type FilterStatus = 'all' | 'inProgress' | 'completed';
 
@@ -54,6 +54,7 @@ const BadgesWidget: React.FC<{ userBadges: string[] }> = ({ userBadges }) => {
 
 const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, userProgress, onViewLeaderboard, onViewResources, showOverview = true }) => {
   const [filter, setFilter] = useState<FilterStatus>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const completedCoursesCount = useMemo(() => {
@@ -72,29 +73,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, us
   }, [courses, userProgress]);
 
   const filteredCourses = useMemo(() => {
-    const statusFiltered = courses.filter(course => {
-      const progress = userProgress[course.id];
-      switch (filter) {
-        case 'completed':
-          return progress?.quizScore !== null;
-        case 'inProgress':
-          return progress && progress.completedModules.length > 0 && progress.quizScore === null;
-        case 'all':
-        default:
-          return true;
-      }
+    return courses.filter(course => {
+        // Status filter
+        const progress = userProgress[course.id];
+        let statusMatch = false;
+        switch (filter) {
+            case 'completed':
+                statusMatch = progress?.quizScore !== null;
+                break;
+            case 'inProgress':
+                statusMatch = progress && progress.completedModules.length > 0 && progress.quizScore === null;
+                break;
+            case 'all':
+            default:
+                statusMatch = true;
+                break;
+        }
+
+        // Category filter
+        const categoryMatch = categoryFilter === 'all' || course.category === categoryFilter;
+
+        // Search query filter
+        const searchMatch = !searchQuery ||
+            course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            course.description.toLowerCase().includes(searchQuery.toLowerCase());
+            
+        return statusMatch && categoryMatch && searchMatch;
     });
-
-    if (!searchQuery) {
-        return statusFiltered;
-    }
-
-    return statusFiltered.filter(course => 
-        course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        course.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-  }, [courses, userProgress, filter, searchQuery]);
+  }, [courses, userProgress, filter, searchQuery, categoryFilter]);
 
   const FilterButton: React.FC<{ status: FilterStatus; label: string }> = ({ status, label }) => (
     <button
@@ -170,14 +176,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, us
                 </div>
             )}
         </div>
-        <div className="flex items-center gap-4 w-full md:w-auto">
+        <div className="flex flex-col lg:flex-row items-center gap-4 w-full md:w-auto">
             <div className="relative flex-grow md:flex-grow-0">
               <input
                 type="search"
                 placeholder="Search courses..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                 aria-label="Search courses"
               />
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none" />
@@ -189,6 +195,29 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, us
             </div>
         </div>
       </div>
+       <div className="mb-8 overflow-x-auto">
+            <div className="flex items-center space-x-2 pb-2">
+                <button
+                    onClick={() => setCategoryFilter('all')}
+                    className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition ${
+                        categoryFilter === 'all' ? 'bg-zamzam-teal-600 text-white shadow' : 'bg-white text-slate-700 hover:bg-zamzam-teal-50'
+                    }`}
+                >
+                    All Categories
+                </button>
+                {COURSE_CATEGORIES.map(category => (
+                    <button
+                        key={category}
+                        onClick={() => setCategoryFilter(category)}
+                        className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition ${
+                            categoryFilter === category ? 'bg-zamzam-teal-600 text-white shadow' : 'bg-white text-slate-700 hover:bg-zamzam-teal-50'
+                        }`}
+                    >
+                        {category}
+                    </button>
+                ))}
+            </div>
+       </div>
       
       {filteredCourses.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

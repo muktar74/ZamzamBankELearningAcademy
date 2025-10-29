@@ -111,7 +111,7 @@ const AiAssistant: React.FC<AiAssistantProps> = ({ history, setHistory, courseCo
                                 value={userInput}
                                 onChange={(e) => setUserInput(e.target.value)}
                                 placeholder="Ask a question..."
-                                className="w-full px-4 py-2 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+                                className="w-full px-4 py-2 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                                 disabled={isLoading}
                             />
                             <button type="submit" disabled={isLoading || !userInput.trim()} className="bg-zamzam-teal-600 text-white p-3 rounded-full hover:bg-zamzam-teal-700 disabled:bg-slate-300 transition">

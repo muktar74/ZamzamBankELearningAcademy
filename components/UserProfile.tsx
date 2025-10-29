@@ -111,7 +111,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpdateUser, onBack, a
                                 type="text"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                className="w-full max-w-sm px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+                                className="w-full max-w-sm px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                                 />
                             </div>
                              <div>

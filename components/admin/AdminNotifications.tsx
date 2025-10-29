@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { User, UserRole, NotificationType, Toast } from '../../types';
 import { PaperAirplaneIcon } from '../icons';
@@ -61,7 +62,7 @@ const AdminNotifications: React.FC<AdminNotificationsProps> = ({ users, createNo
                 id="recipient"
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-50"
+                className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
             >
                 <option value="all">All Employees</option>
                 {employeeUsers.map(user => (
@@ -79,7 +80,7 @@ const AdminNotifications: React.FC<AdminNotificationsProps> = ({ users, createNo
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={5}
-                className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-50"
+                className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
                 placeholder="Write your notification message here..."
             />
         </div>

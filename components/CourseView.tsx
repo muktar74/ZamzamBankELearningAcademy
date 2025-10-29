@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Course, User, Toast } from '../types';
 import QuizView from './QuizView';
 import DiscussionForum from './DiscussionForum';
-import { ChevronLeftIcon, DocumentTextIcon, CheckCircleIcon, LockClosedIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, StarIcon, BookOpenIcon as DownloadIcon } from './icons';
+import { ChevronLeftIcon, DocumentTextIcon, CheckCircleIcon, LockClosedIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, StarIcon, BookOpenIcon as DownloadIcon, VideoCameraIcon } from './icons';
 import ReviewsTab from './ReviewsTab';
 
 interface CourseViewProps {
@@ -77,7 +77,10 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
   }
 
   if (showQuiz) {
-    return <QuizView course={course} onQuizComplete={onCourseComplete} />;
+    return <QuizView course={course} onQuizComplete={(score) => {
+        onCourseComplete(score);
+        setShowQuiz(false);
+    }} />;
   }
   
   const TabButton: React.FC<{tab: CourseTab, label: string, icon: React.ReactNode}> = ({tab, label, icon}) => (
@@ -104,11 +107,13 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Modules Sidebar */}
         <aside className="lg:w-1/3 border-r-0 lg:border-r lg:pr-8 flex-shrink-0">
+          <p className="text-sm font-semibold text-zamzam-teal-600 uppercase mb-1">{course.category}</p>
           <h2 className="text-2xl font-bold mb-4">{course.title}</h2>
           <ul className="space-y-2">
             {course.modules.map((module) => {
               const isCompleted = completedModules.includes(module.id);
               const isActive = activeModuleId === module.id && activeTab === 'content';
+              const Icon = module.type === 'video' ? VideoCameraIcon : DocumentTextIcon;
               return (
                 <li key={module.id}>
                   <button
@@ -122,7 +127,7 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
                     {isCompleted ? (
                        <CheckCircleIcon className="h-5 w-5 mr-3 text-green-500 flex-shrink-0" />
                     ) : (
-                      <DocumentTextIcon className="h-5 w-5 mr-3 text-slate-400 flex-shrink-0" />
+                      <Icon className="h-5 w-5 mr-3 text-slate-400 flex-shrink-0" />
                     )}
                     <span className={isCompleted && !isActive ? 'text-slate-500' : ''}>{module.title}</span>
                   </button>
@@ -168,13 +173,26 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
           {activeTab === 'content' && (
              activeModule ? (
                 <div>
-                    <div className="prose max-w-none prose-p:text-slate-700 prose-p:leading-relaxed prose-strong:text-slate-800 prose-ul:list-disc prose-ul:ml-6 prose-img:rounded-md prose-img:shadow-sm prose-a:text-zamzam-teal-600 prose-a:font-semibold hover:prose-a:text-zamzam-teal-700">
-                      <h3 className="text-3xl font-bold text-slate-800 mb-4">{activeModule.title}</h3>
-                       {/* SECURITY NOTE: Using dangerouslySetInnerHTML to render HTML from the course content.
-                           This is acceptable here because the content is created by trusted administrators.
-                           In a scenario where users can create content, this would need to be sanitized to prevent XSS attacks. */}
-                      <div dangerouslySetInnerHTML={{ __html: activeModule.content }} />
-                    </div>
+                    <h3 className="text-3xl font-bold text-slate-800 mb-4">{activeModule.title}</h3>
+                    {activeModule.type === 'video' ? (
+                        <div className="aspect-w-16 aspect-h-9 bg-black rounded-lg overflow-hidden shadow-sm">
+                            <iframe
+                                src={activeModule.content}
+                                title={activeModule.title}
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                                className="w-full h-full"
+                            ></iframe>
+                        </div>
+                    ) : (
+                        <div className="prose max-w-none prose-p:text-slate-700 prose-p:leading-relaxed prose-strong:text-slate-800 prose-ul:list-disc prose-ul:ml-6 prose-img:rounded-md prose-img:shadow-sm prose-a:text-zamzam-teal-600 prose-a:font-semibold hover:prose-a:text-zamzam-teal-700">
+                           {/* SECURITY NOTE: Using dangerouslySetInnerHTML to render HTML from the course content.
+                               This is acceptable here because the content is created by trusted administrators.
+                               In a scenario where users can create content, this would need to be sanitized to prevent XSS attacks. */}
+                          <div dangerouslySetInnerHTML={{ __html: activeModule.content }} />
+                        </div>
+                    )}
                      <div className="flex justify-between mt-8 border-t pt-4">
                         <button
                           onClick={handlePrevModule}

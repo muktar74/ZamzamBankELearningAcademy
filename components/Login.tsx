@@ -50,7 +50,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, setPage }) => {
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
-            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
             placeholder="muktarabdella6@gmail.com"
           />
         </div>
@@ -65,7 +65,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, setPage }) => {
             onChange={(e) => setPassword(e.target.value)}
             required
             autoComplete="current-password"
-            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-slate-100"
+            className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
             placeholder="••••••••"
           />
         </div>
