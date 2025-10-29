@@ -16,6 +16,25 @@ interface CourseManagementProps {
 type SortKey = 'title' | 'modules' | 'quiz';
 type SortDirection = 'ascending' | 'descending';
 
+// Helper to map Supabase's snake_case to frontend's camelCase
+const mapSupabaseCourseToCourse = (supabaseCourse: any): Course => {
+    return {
+        id: supabaseCourse.id,
+        title: supabaseCourse.title,
+        description: supabaseCourse.description,
+        category: supabaseCourse.category,
+        modules: supabaseCourse.modules,
+        quiz: supabaseCourse.quiz,
+        passingScore: supabaseCourse.passing_score,
+        imageUrl: supabaseCourse.image_url,
+        reviews: supabaseCourse.reviews || [],
+        discussion: supabaseCourse.discussion,
+        textbookUrl: supabaseCourse.textbook_url,
+        textbookName: supabaseCourse.textbook_name,
+        createdAt: supabaseCourse.created_at,
+    };
+};
+
 const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses, users, createNotification, addToast }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
@@ -88,6 +107,7 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
   const handleSaveCourse = async (course: Course) => {
     const isNewCourse = !editingCourse;
     
+    // Map frontend camelCase to Supabase snake_case for the database operation
     const courseData = {
         title: course.title,
         description: course.description,
@@ -105,7 +125,7 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
             addToast(`Error creating course: ${error.message}`, 'error');
             throw error;
         }
-        setCourses(prev => [{...newCourse, reviews: []} as Course, ...prev]);
+        setCourses(prev => [mapSupabaseCourseToCourse(newCourse), ...prev]);
         users.forEach(u => {
             if(u.role === UserRole.EMPLOYEE) {
                 createNotification(u.id, NotificationType.NEW_COURSE, `A new course has been added: "${course.title}"`);
@@ -118,7 +138,7 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
             addToast(`Error updating course: ${error.message}`, 'error');
             throw error;
         }
-        setCourses(prev => prev.map(c => c.id === editingCourse!.id ? { ...c, ...updatedCourse } as Course : c));
+        setCourses(prev => prev.map(c => c.id === editingCourse!.id ? mapSupabaseCourseToCourse(updatedCourse) : c));
         addToast('Course updated successfully.', 'success');
     }
   };

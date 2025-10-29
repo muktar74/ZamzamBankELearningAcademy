@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { User, Course, UserRole, UserProgress, CertificateData, Notification, NotificationType, AiMessage, Review, Toast as ToastType, AllUserProgress, ExternalResource } from './types';
 import { BADGE_DEFINITIONS } from './constants';
@@ -159,8 +158,19 @@ const App: React.FC = () => {
 
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    // State will be cleared by the onAuthStateChange listener
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+        addToast(`Error logging out: ${error.message}`, 'error');
+    }
+    // Explicitly clear state for a faster, more reliable logout UX
+    setCurrentUser(null);
+    setCurrentPage('home');
+    setUsers([]);
+    setCourses([]);
+    setNotifications([]);
+    setAllUserProgress({});
+    setExternalResources([]);
+    setAiChatHistory([]);
   };
   
   const removeToast = (id: string) => {
@@ -468,10 +478,19 @@ const App: React.FC = () => {
   };
 
   const renderAppContent = () => {
-    if (!currentUser) return null; // Should be handled by page renderer
+    if (!currentUser) return null;
     const currentUserProgress = allUserProgress[currentUser.id] || {};
 
+    // Handle common views accessible to all roles first
+    if (currentView === 'profile') {
+      const dashboardView = currentUser.role === UserRole.ADMIN ? 'admin' : 'dashboard';
+      return <UserProfile user={currentUser} onUpdateUser={handleUpdateUser} onBack={() => setView(dashboardView)} addToast={addToast} />;
+    }
+
+    // Handle role-specific views
     if (currentUser.role === UserRole.ADMIN) {
+      // The AdminDashboard is the primary view for an admin.
+      // Other views like 'profile' are handled above.
       return <AdminDashboard 
         courses={courses} 
         setCourses={setCourses} 
@@ -485,6 +504,7 @@ const App: React.FC = () => {
       />;
     }
 
+    // Default to Employee views
     switch (currentView) {
       case 'course':
         return (
@@ -526,8 +546,6 @@ const App: React.FC = () => {
                 showOverview={false}
             />
         );
-      case 'profile':
-        return <UserProfile user={currentUser} onUpdateUser={handleUpdateUser} onBack={() => setView('dashboard')} addToast={addToast} />;
       case 'dashboard':
       default:
         return (

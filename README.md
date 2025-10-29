@@ -1,4 +1,3 @@
-
 # Zamzam Bank E-Learning Platform
 
 ![Zamzam Bank E-Learning](https://i.imgur.com/K5d9lYy.png)
@@ -75,7 +74,7 @@ Go to the **SQL Editor** in your Supabase project dashboard. **Copy the entire S
 
 This single script is **safe to run multiple times**. It will:
 - Create all the necessary tables (`users`, `courses`, etc.) if they don't already exist.
-- Set up the required relationships and data types.
+- **Update existing tables** by adding any missing columns (like `category` and `passing_score`), ensuring your schema is up-to-date without losing data.
 - Create or update the functions and triggers.
 - Enable Realtime on the notifications table.
 - Set up and enforce all Row Level Security policies, ensuring a secure starting point.
@@ -107,17 +106,20 @@ create table if not exists public.courses (
   id uuid not null default gen_random_uuid() primary key,
   title text not null,
   description text not null,
-  category text not null default 'General Islamic Finance'::text,
   modules jsonb not null default '[]'::jsonb,
   quiz jsonb not null default '[]'::jsonb,
-  passing_score integer not null default 70,
   image_url text,
   discussion jsonb not null default '[]'::jsonb,
-  textbook_url text,
-  textbook_name text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 comment on table public.courses is 'Stores all course content, including modules and quizzes.';
+
+-- Idempotent migration for existing tables that might be missing new columns
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS category text not null default 'General Islamic Finance'::text;
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS passing_score integer not null default 70;
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS textbook_url text;
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS textbook_name text;
+
 
 create table if not exists public.reviews (
   id uuid not null default gen_random_uuid() primary key,
@@ -232,17 +234,65 @@ as $$
   where id = auth.uid();
 $$;
 
--- Helper function to get the role of the current user
-create or replace function public.get_my_role()
-returns user_role
-language sql
-security definer
-set search_path = public
+-- New secure function for an admin to create and approve a new user
+create or replace function public.create_user_as_admin(
+    user_email text,
+    user_password text,
+    user_name text
+)
+returns json
+language plpgsql
+security definer set search_path = public, auth
 as $$
-  select role
-  from public.users
-  where id = auth.uid();
+declare
+  is_admin boolean;
+  new_user_id uuid;
+  new_user_profile json;
+begin
+  -- 1. Check if the caller is an admin
+  select (select role from public.users where id = auth.uid()) = 'Admin'::user_role into is_admin;
+  if not is_admin then
+    raise exception 'Permission denied: Only admins can create users.';
+  end if;
+
+  -- 2. Create the user in auth.users
+  select auth.admin_create_user(
+      user_email,
+      user_password,
+      jsonb_build_object(
+          'email_confirm', true,
+          'name', user_name
+      )
+  )->'id' into new_user_id;
+  
+  -- The handle_new_user trigger will have already created an entry in public.users,
+  -- but it will be marked as not approved.
+  
+  -- 3. Immediately approve the newly created user
+  update public.users
+  set approved = true
+  where id = new_user_id;
+
+  -- 4. Fetch and return the full profile of the new user
+  select json_build_object(
+      'id', u.id,
+      'name', u.name,
+      'email', u.email,
+      'role', u.role,
+      'approved', u.approved,
+      'points', u.points,
+      'badges', u.badges,
+      'profileImageUrl', u.profile_image_url,
+      'createdAt', u.created_at
+  )
+  from public.users u
+  where u.id = new_user_id
+  into new_user_profile;
+
+  return new_user_profile;
+end;
 $$;
+
 
 -- Helper function to check if the current user is approved
 create or replace function public.is_approved_user()
@@ -292,7 +342,7 @@ create policy "Users can update their own profile." on public.users for update
   
 drop policy if exists "Admins can manage all user profiles." on public.users;
 create policy "Admins can manage all user profiles." on public.users for all
-  using ( public.get_my_role() = 'Admin'::user_role );
+  using ( (select role from public.users where id = auth.uid()) = 'Admin'::user_role );
 
 -- Policies for `courses` table (Idempotent)
 drop policy if exists "Approved users can view all courses." on public.courses;
@@ -301,7 +351,7 @@ create policy "Approved users can view all courses." on public.courses for selec
   
 drop policy if exists "Admins can manage courses." on public.courses;
 create policy "Admins can manage courses." on public.courses for all
-  using ( public.get_my_role() = 'Admin'::user_role );
+  using ( (select role from public.users where id = auth.uid()) = 'Admin'::user_role );
 
 -- Policies for `reviews` table (Idempotent)
 drop policy if exists "Approved users can view all reviews." on public.reviews;
@@ -313,7 +363,7 @@ create policy "Users can insert their own reviews." on public.reviews for insert
 
 drop policy if exists "Admins can manage all reviews." on public.reviews;
 create policy "Admins can manage all reviews." on public.reviews for all
-  using ( public.get_my_role() = 'Admin'::user_role );
+  using ( (select role from public.users where id = auth.uid()) = 'Admin'::user_role );
 
 -- Policies for `user_progress` table (Idempotent)
 drop policy if exists "Users can view and manage their own progress." on public.user_progress;
@@ -322,7 +372,7 @@ create policy "Users can view and manage their own progress." on public.user_pro
 
 drop policy if exists "Admins can view all user progress." on public.user_progress;
 create policy "Admins can view all user progress." on public.user_progress for select
-  using ( public.get_my_role() = 'Admin'::user_role );
+  using ( (select role from public.users where id = auth.uid()) = 'Admin'::user_role );
 
 -- Policies for `notifications` table (Idempotent)
 drop policy if exists "Users can view their own notifications." on public.notifications;
@@ -333,7 +383,7 @@ create policy "Users can update (mark as read) their own notifications." on publ
 
 drop policy if exists "Admins can create notifications for any user." on public.notifications;
 create policy "Admins can create notifications for any user." on public.notifications for insert
-  with check ( public.get_my_role() = 'Admin'::user_role );
+  with check ( (select role from public.users where id = auth.uid()) = 'Admin'::user_role );
 
 -- Policies for `external_resources` table (Idempotent)
 drop policy if exists "Approved users can view all external resources." on public.external_resources;
@@ -342,7 +392,7 @@ create policy "Approved users can view all external resources." on public.extern
 
 drop policy if exists "Admins can manage external resources." on public.external_resources;
 create policy "Admins can manage external resources." on public.external_resources for all
-  using ( public.get_my_role() = 'Admin'::user_role );
+  using ( (select role from public.users where id = auth.uid()) = 'Admin'::user_role );
 
 
 -- 7. Storage Policies (Idempotent)
@@ -361,12 +411,12 @@ create policy "Allow authenticated users to upload assets"
 drop policy if exists "Allow owners or admins to update assets" on storage.objects;
 create policy "Allow owners or admins to update assets"
   on storage.objects for update
-  using ( (auth.uid() = owner) or (public.get_my_role() = 'Admin'::user_role) );
+  using ( (auth.uid() = owner) or ((select role from public.users where id = auth.uid()) = 'Admin'::user_role) );
 
 drop policy if exists "Allow owners or admins to delete assets" on storage.objects;
 create policy "Allow owners or admins to delete assets"
   on storage.objects for delete
-  using ( (auth.uid() = owner) or (public.get_my_role() = 'Admin'::user_role) );
+  using ( (auth.uid() = owner) or ((select role from public.users where id = auth.uid()) = 'Admin'::user_role) );
 ```
 
 ### Step 4: Set up Supabase Storage
