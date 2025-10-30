@@ -127,7 +127,8 @@ const App: React.FC = () => {
             return;
         }
 
-        if (!profile.approved) {
+        // Admins should always be allowed in, regardless of 'approved' status.
+        if (!profile.approved && profile.role !== UserRole.ADMIN) {
             // This case should ideally be caught by handleLogin on a fresh sign-in,
             // but it's a good safeguard for session restoration if approval status changes.
             addToast('Your account is pending approval.', 'error');
@@ -220,7 +221,7 @@ const App: React.FC = () => {
     if (authData.user) {
         const { data: profile, error: profileError } = await supabase
             .from('users')
-            .select('approved')
+            .select('approved, role')
             .eq('id', authData.user.id)
             .single();
 
@@ -232,7 +233,8 @@ const App: React.FC = () => {
             throw new Error(errorMessage);
         }
 
-        if (!profile.approved) {
+        // Admins can log in regardless of approval status.
+        if (!profile.approved && profile.role !== UserRole.ADMIN) {
             // Profile found but not approved. Sign out and show specific error.
             await supabase.auth.signOut();
             const errorMessage = "Your account is pending approval.";
