@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Course, User, Toast } from '../types';
 import QuizView from './QuizView';
@@ -176,14 +175,25 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
                     <h3 className="text-3xl font-bold text-slate-800 mb-4">{activeModule.title}</h3>
                     {activeModule.type === 'video' ? (
                         <div className="aspect-w-16 aspect-h-9 bg-black rounded-lg overflow-hidden shadow-sm">
-                            <iframe
-                                src={activeModule.content}
-                                title={activeModule.title}
-                                frameBorder="0"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                                className="w-full h-full"
-                            ></iframe>
+                           {activeModule.videoType === 'upload' ? (
+                                <video
+                                    key={activeModule.content} // Force re-render if src changes
+                                    src={activeModule.content}
+                                    controls
+                                    className="w-full h-full object-contain"
+                                >
+                                    Your browser does not support the video tag.
+                                </video>
+                           ) : (
+                                <iframe
+                                    src={activeModule.content}
+                                    title={activeModule.title}
+                                    frameBorder="0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                    className="w-full h-full"
+                                ></iframe>
+                           )}
                         </div>
                     ) : (
                         <div className="prose max-w-none prose-p:text-slate-700 prose-p:leading-relaxed prose-strong:text-slate-800 prose-ul:list-disc prose-ul:ml-6 prose-img:rounded-md prose-img:shadow-sm prose-a:text-zamzam-teal-600 prose-a:font-semibold hover:prose-a:text-zamzam-teal-700">

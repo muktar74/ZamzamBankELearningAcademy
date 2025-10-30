@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Course, User, NotificationType, Toast, UserRole } from '../../types';
+import { Course, User, NotificationType, Toast, UserRole, Module, CourseCategory } from '../../types';
 import CourseFormModal from '../CourseFormModal';
 import ConfirmModal from '../ConfirmModal';
 import { PlusIcon, PencilIcon, TrashIcon, ChevronUpIcon, ChevronDownIcon, ChevronUpDownIcon, SearchIcon } from '../icons';
@@ -11,6 +11,7 @@ interface CourseManagementProps {
   users: User[];
   createNotification: (userId: string, type: NotificationType, message: string) => void;
   addToast: (message: string, type: Toast['type']) => void;
+  courseCategories: CourseCategory[];
 }
 
 type SortKey = 'title' | 'modules' | 'quiz';
@@ -35,11 +36,12 @@ const mapSupabaseCourseToCourse = (supabaseCourse: any): Course => {
     };
 };
 
-const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses, users, createNotification, addToast }) => {
+const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses, users, createNotification, addToast, courseCategories }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'title', direction: 'ascending' });
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
 
   const [confirmModalState, setConfirmModalState] = useState<{isOpen: boolean; onConfirm: () => void}>({
     isOpen: false,
@@ -50,9 +52,15 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
     let filteredCourses = [...courses];
     
     if (searchQuery) {
+        const lowercasedQuery = searchQuery.toLowerCase();
         filteredCourses = filteredCourses.filter(course =>
-            course.title.toLowerCase().includes(searchQuery.toLowerCase())
+            course.title.toLowerCase().includes(lowercasedQuery) ||
+            course.description.toLowerCase().includes(lowercasedQuery)
         );
+    }
+
+    if (categoryFilter !== 'all') {
+        filteredCourses = filteredCourses.filter(course => course.category === categoryFilter);
     }
     
     filteredCourses.sort((a, b) => {
@@ -84,7 +92,7 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
     });
     
     return filteredCourses;
-  }, [courses, sortConfig, searchQuery]);
+  }, [courses, sortConfig, searchQuery, categoryFilter]);
 
   const requestSort = (key: SortKey) => {
     let direction: SortDirection = 'ascending';
@@ -116,7 +124,9 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
         image_url: course.imageUrl,
         discussion: course.discussion,
         category: course.category,
-        passing_score: course.passingScore
+        passing_score: course.passingScore,
+        textbook_url: course.textbookUrl,
+        textbook_name: course.textbookName,
     };
 
     if (isNewCourse) {
@@ -147,11 +157,43 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
     setConfirmModalState({
         isOpen: true,
         onConfirm: async () => {
+            const courseToDelete = courses.find(c => c.id === courseId);
+            if (courseToDelete) {
+                const videoPaths: string[] = courseToDelete.modules
+                    .filter((module: Module) => module.type === 'video' && module.videoType === 'upload' && module.content)
+                    .map((module: Module) => {
+                        try {
+                            const url = new URL(module.content);
+                            const pathName = url.pathname;
+                            const bucketName = 'assets';
+                            const searchString = `/storage/v1/object/public/${bucketName}/`;
+                            if (pathName.includes(searchString)) {
+                                return decodeURIComponent(pathName.substring(pathName.indexOf(searchString) + searchString.length));
+                            }
+                             console.warn("URL does not seem to be a Supabase storage URL:", module.content);
+                            return null;
+                        } catch (e) {
+                             console.error("Could not parse URL for deletion:", module.content, e);
+                            return null;
+                        }
+                    })
+                    .filter((path): path is string => path !== null);
+
+                if (videoPaths.length > 0) {
+                    addToast("Deleting associated video files...", "info");
+                    const { error: storageError } = await supabase.storage.from('assets').remove(videoPaths);
+                    if (storageError) {
+                        addToast(`Could not delete some video files: ${storageError.message}. Please check storage manually.`, 'error');
+                    }
+                }
+            }
+            
             const { error } = await supabase.from('courses').delete().eq('id', courseId);
             if(error) {
                  addToast(`Error deleting course: ${error.message}`, 'error');
                  return;
             }
+
             setCourses(prev => prev.filter(c => c.id !== courseId));
             addToast('Course deleted successfully.', 'success');
         }
@@ -180,10 +222,19 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
                 <p className="text-lg text-slate-600">Create, edit, and manage all e-learning courses.</p>
             </div>
              <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full sm:w-48 px-3 py-2 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
+                    aria-label="Filter by category"
+                >
+                    <option value="all">All Categories</option>
+                    {courseCategories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
+                </select>
                 <div className="relative w-full sm:w-auto">
                     <input
                         type="search"
-                        placeholder="Search courses..."
+                        placeholder="Search title or description..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full sm:w-64 pl-10 pr-4 py-2 border border-slate-300 rounded-full focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white"
@@ -232,7 +283,7 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
                         {filteredAndSortedCourses.length === 0 && (
                           <tr>
                             <td colSpan={4} className="text-center py-10 px-6 text-slate-500">
-                                No courses found matching your search.
+                                No courses found matching your criteria.
                             </td>
                           </tr>
                         )}
@@ -246,6 +297,7 @@ const CourseManagement: React.FC<CourseManagementProps> = ({ courses, setCourses
             onSave={handleSaveCourse}
             course={editingCourse}
             addToast={addToast}
+            courseCategories={courseCategories}
         />
         <ConfirmModal
             isOpen={confirmModalState.isOpen}

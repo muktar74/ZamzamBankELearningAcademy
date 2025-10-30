@@ -1,4 +1,5 @@
 
+
 import { Badge } from './types';
 import { ShieldCheckIcon, SparklesIcon, TrophyIcon, AcademicCapIcon } from './components/icons';
 
@@ -34,14 +35,3 @@ export const BADGE_DEFINITIONS: { [key: string]: Badge } = {
         points: 150,
     },
 };
-
-export const COURSE_CATEGORIES = [
-    'General Islamic Finance',
-    'Islamic Banking Principles',
-    'Takaful (Islamic Insurance)',
-    'Sukuk (Islamic Bonds)',
-    'Islamic Capital Markets',
-    'Risk Management in IFB',
-    'Shariah Governance & Compliance',
-    'Digital Banking & Fintech',
-];

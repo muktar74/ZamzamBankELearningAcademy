@@ -1,14 +1,15 @@
 
 
 import React, { useState } from 'react';
-import { Course, User, NotificationType, Toast, AllUserProgress, ExternalResource } from '../types';
+import { Course, User, NotificationType, Toast, AllUserProgress, ExternalResource, CourseCategory } from '../types';
 import UserManagement from './UserManagement';
-import { BookOpenIcon, UsersIcon, ChartBarIcon, DocumentTextIcon, BellIcon, BookOpenIcon as LibraryIcon } from './icons';
+import { BookOpenIcon, UsersIcon, ChartBarIcon, DocumentTextIcon, BellIcon, BookOpenIcon as LibraryIcon, TagIcon } from './icons';
 import CourseManagement from './admin/CourseManagement';
 import AdminAnalytics from './admin/AdminAnalytics';
 import AdminReports from './admin/AdminReports';
 import AdminNotifications from './admin/AdminNotifications';
 import ResourceManagement from './admin/ResourceManagement';
+import CategoryManagement from './admin/CategoryManagement';
 
 interface AdminDashboardProps {
   courses: Course[];
@@ -20,9 +21,11 @@ interface AdminDashboardProps {
   allUserProgress: AllUserProgress;
   externalResources: ExternalResource[];
   setExternalResources: React.Dispatch<React.SetStateAction<ExternalResource[]>>;
+  courseCategories: CourseCategory[];
+  setCourseCategories: React.Dispatch<React.SetStateAction<CourseCategory[]>>;
 }
 
-type AdminTab = 'courses' | 'users' | 'analytics' | 'reports' | 'notifications' | 'resources';
+type AdminTab = 'courses' | 'users' | 'analytics' | 'reports' | 'notifications' | 'resources' | 'categories';
 
 const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('courses');
@@ -45,6 +48,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     switch (activeTab) {
       case 'users':
         return <UserManagement {...props} />;
+      case 'categories':
+        return <CategoryManagement 
+                    courseCategories={props.courseCategories} 
+                    setCourseCategories={props.setCourseCategories} 
+                    courses={props.courses}
+                    setCourses={props.setCourses}
+                    addToast={props.addToast}
+                />;
       case 'analytics':
         return <AdminAnalytics {...props} />;
       case 'reports':
@@ -65,6 +76,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
           <nav className="-mb-px flex space-x-2 sm:space-x-6 px-2 sm:px-6 overflow-x-auto" aria-label="Tabs">
               <TabButton tab="courses" label="Courses" icon={<BookOpenIcon className="h-5 w-5"/>} />
               <TabButton tab="users" label="Users" icon={<UsersIcon className="h-5 w-5"/>} />
+              <TabButton tab="categories" label="Categories" icon={<TagIcon className="h-5 w-5"/>} />
               <TabButton tab="resources" label="Resources" icon={<LibraryIcon className="h-5 w-5"/>} />
               <TabButton tab="analytics" label="Analytics" icon={<ChartBarIcon className="h-5 w-5"/>} />
               <TabButton tab="reports" label="Reports" icon={<DocumentTextIcon className="h-5 w-5"/>} />

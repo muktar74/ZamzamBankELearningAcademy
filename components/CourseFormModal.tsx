@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Course, Module, QuizQuestion, Toast } from '../types';
+import { Course, Module, QuizQuestion, Toast, CourseCategory } from '../types';
 import { generateCourseContent, generateQuiz, generateCourseFromText } from '../services/geminiService';
-import { SparklesIcon, PlusIcon, TrashIcon, ArrowUpTrayIcon } from './icons';
+import { SparklesIcon, PlusIcon, TrashIcon, ArrowUpTrayIcon, VideoCameraIcon } from './icons';
 import { supabase } from '../services/supabaseClient';
-import { COURSE_CATEGORIES } from '../constants';
 
 // This library is loaded from a CDN script in index.html
 declare const pdfjsLib: any;
@@ -14,14 +13,17 @@ interface CourseFormModalProps {
   onSave: (course: Course) => Promise<void>;
   course: Course | null;
   addToast: (message: string, type: Toast['type']) => void;
+  courseCategories: CourseCategory[];
 }
 
-const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSave, course, addToast }) => {
+type EditableModule = Module & { file?: File };
+
+const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSave, course, addToast, courseCategories }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState(COURSE_CATEGORIES[0]);
+  const [category, setCategory] = useState(courseCategories.length > 0 ? courseCategories[0].name : '');
   const [passingScore, setPassingScore] = useState(70);
-  const [modules, setModules] = useState<Module[]>([]);
+  const [modules, setModules] = useState<EditableModule[]>([]);
   const [quiz, setQuiz] = useState<QuizQuestion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -29,12 +31,22 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
   const modalBodyRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleClose = () => {
+    // Clean up any temporary blob URLs to prevent memory leaks
+    modules.forEach(module => {
+        if (module.content && module.content.startsWith('blob:')) {
+            URL.revokeObjectURL(module.content);
+        }
+    });
+    onClose();
+  };
+
   useEffect(() => {
     if (isOpen) {
       if (course) {
         setTitle(course.title);
         setDescription(course.description);
-        setCategory(course.category || COURSE_CATEGORIES[0]);
+        setCategory(course.category || (courseCategories.length > 0 ? courseCategories[0].name : ''));
         setPassingScore(course.passingScore || 70);
         setModules(course.modules);
         setQuiz(course.quiz);
@@ -42,7 +54,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
         // Reset form for new course
         setTitle('');
         setDescription('');
-        setCategory(COURSE_CATEGORIES[0]);
+        setCategory(courseCategories.length > 0 ? courseCategories[0].name : '');
         setPassingScore(70);
         setModules([]);
         setQuiz([]);
@@ -50,7 +62,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
       setIsSaving(false);
       setIsGenerating(false);
     }
-  }, [isOpen, course]);
+  }, [isOpen, course, courseCategories]);
 
   const handleGenerateWithAI = async () => {
     if (!title) {
@@ -136,21 +148,85 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
         setIsGenerating(false);
     }
   }
+  
+  const handleVideoSelect = (event: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  const handleModuleChange = (index: number, field: keyof Module, value: string) => {
+    if (!file.type.startsWith('video/')) {
+        addToast("Invalid file type. Please upload a video file.", 'error');
+        return;
+    }
+    
+    // 50MB limit
+    if (file.size > 50 * 1024 * 1024) { 
+        addToast("Video file is too large. Please use a file smaller than 50MB.", 'error');
+        return;
+    }
+
     const newModules = [...modules];
-    newModules[index] = { ...newModules[index], [field]: value };
+    const oldModule = newModules[index];
+
+    // If there was a previously staged file, revoke its object URL to prevent memory leaks
+    if (oldModule.file && oldModule.content.startsWith('blob:')) {
+        URL.revokeObjectURL(oldModule.content);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    newModules[index] = { ...oldModule, content: objectUrl, videoType: 'upload', file: file };
+    setModules(newModules);
+    
+    // Reset file input to allow selecting the same file again
+    if (event.target) event.target.value = "";
+  };
+
+
+  const handleModuleChange = (index: number, changes: Partial<EditableModule>) => {
+    const newModules = [...modules];
+    const oldModule = newModules[index];
+
+    // If type is changing, reset content and videoType
+    if (changes.type && oldModule.type !== changes.type) {
+        changes.content = '';
+        if (oldModule.file && oldModule.content.startsWith('blob:')) {
+            URL.revokeObjectURL(oldModule.content);
+        }
+        changes.file = undefined;
+
+        if (changes.type === 'video') {
+            changes.videoType = 'embed';
+        } else {
+            delete changes.videoType;
+        }
+    }
+
+    newModules[index] = { ...oldModule, ...changes };
     setModules(newModules);
   };
+
 
   const addModule = () => {
     setModules([...modules, { id: `m-new-${Date.now()}`, title: '', content: '', type: 'text' }]);
     setTimeout(() => modalBodyRef.current?.scrollTo({ top: modalBodyRef.current.scrollHeight, behavior: 'smooth' }), 100);
   };
+  
+  const addVideoModule = () => {
+    setModules([...modules, { id: `m-new-${Date.now()}`, title: '', content: '', type: 'video', videoType: 'embed' }]);
+    setTimeout(() => modalBodyRef.current?.scrollTo({ top: modalBodyRef.current.scrollHeight, behavior: 'smooth' }), 100);
+  };
 
   const removeModule = (index: number) => {
+    const moduleToRemove = modules[index];
+
+    if (moduleToRemove.file && moduleToRemove.content.startsWith('blob:')) {
+        URL.revokeObjectURL(moduleToRemove.content);
+    }
+    
+    addToast("Module removed. Changes will be saved when you submit the form.", "info");
+
     setModules(modules.filter((_, i) => i !== index));
   };
+
 
   const handleQuizChange = (qIndex: number, field: keyof QuizQuestion, value: any, optIndex?: number) => {
     const newQuiz = [...quiz];
@@ -164,7 +240,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
   };
   
   const addQuizQuestion = () => {
-    setQuiz([...quiz, { question: '', options: ['', '', '', ''], correctAnswer: '' }]);
+    setQuiz([...quiz, { question: '', options: ['True', 'False'], correctAnswer: '' }]);
      setTimeout(() => modalBodyRef.current?.scrollTo({ top: modalBodyRef.current.scrollHeight, behavior: 'smooth' }), 100);
   };
 
@@ -172,6 +248,34 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
     setQuiz(quiz.filter((_, i) => i !== index));
   };
   
+  const addQuizOption = (qIndex: number) => {
+    const newQuiz = [...quiz];
+    if (newQuiz[qIndex].options.length >= 6) {
+        addToast("A maximum of 6 options are allowed per question.", "info");
+        return;
+    }
+    newQuiz[qIndex].options.push('');
+    setQuiz(newQuiz);
+  };
+
+  const removeQuizOption = (qIndex: number, optIndex: number) => {
+      const newQuiz = [...quiz];
+      const question = newQuiz[qIndex];
+      
+      if (question.options.length <= 2) {
+          addToast("A question must have at least 2 options.", "error");
+          return;
+      }
+      
+      const removedOption = question.options[optIndex];
+      if (question.correctAnswer === removedOption) {
+          question.correctAnswer = '';
+      }
+      
+      question.options = question.options.filter((_, i) => i !== optIndex);
+      setQuiz(newQuiz);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !description) {
@@ -182,29 +286,62 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
         addToast("Passing score must be between 0 and 100.", 'error');
         return;
     }
+    if (courseCategories.length > 0 && !category) {
+        addToast("Please select a category for the course.", "error");
+        return;
+    }
 
-    const finalCourse: Course = {
-        id: course?.id || '',
-        title,
-        description,
-        category,
-        passingScore,
-        modules,
-        quiz,
-        imageUrl: course?.imageUrl || `https://picsum.photos/seed/${title.replace(/\s/g, '')}/600/400`,
-        reviews: course?.reviews || [],
-        discussion: course?.discussion || [],
-        textbookUrl: undefined, 
-        textbookName: undefined,
-    };
-    
     setIsSaving(true);
+    addToast("Saving course... please wait.", "info");
+
     try {
+        const finalModules: Module[] = await Promise.all(
+            modules.map(async (mod): Promise<Module> => {
+                const { file, ...baseModule } = mod;
+
+                if (baseModule.type === 'video' && baseModule.videoType === 'upload' && file) {
+                    addToast(`Uploading ${file.name}...`, 'info');
+                    const safeFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+                    const filePath = `public/${Date.now()}-${safeFileName}`;
+
+                    const { data, error } = await supabase.storage
+                        .from('assets')
+                        .upload(filePath, file);
+                    
+                    if (error) throw new Error(`Upload failed for ${file.name}: ${error.message}`);
+                    
+                    const { data: urlData } = supabase.storage.from('assets').getPublicUrl(data.path);
+                    
+                    return {
+                        ...baseModule,
+                        content: urlData.publicUrl,
+                    };
+                }
+                
+                return baseModule;
+            })
+        );
+
+
+        const finalCourse: Course = {
+            id: course?.id || '',
+            title,
+            description,
+            category,
+            passingScore,
+            modules: finalModules,
+            quiz,
+            imageUrl: course?.imageUrl || `https://picsum.photos/seed/${title.replace(/\s/g, '')}/600/400`,
+            reviews: course?.reviews || [],
+            discussion: course?.discussion || [],
+            textbookUrl: course?.textbookUrl, 
+            textbookName: course?.textbookName,
+        };
+        
         await onSave(finalCourse);
-        onClose(); // Close on success
-    } catch (error) {
-        // Parent component's onSave function is responsible for toasting specific errors.
-        // This catch block prevents the app from crashing and allows the 'finally' to run.
+        handleClose();
+    } catch (error: any) {
+        addToast(error.message || 'An error occurred while saving the course.', 'error');
     } finally {
         setIsSaving(false);
     }
@@ -238,7 +375,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                             <button
                                 type="button"
                                 onClick={handleGenerateWithAI}
-                                disabled={isGenerating || !title}
+                                disabled={isGenerating || !title || isSaving}
                                 className="flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-zamzam-teal-600 rounded-md hover:bg-zamzam-teal-700 transition disabled:bg-slate-400"
                             >
                                 <SparklesIcon className="h-5 w-5 mr-2" />
@@ -248,11 +385,11 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                     </div>
                     <div>
                         <label htmlFor="pdfUpload" className="block text-sm font-medium text-slate-700 mb-1">2. Or, generate from a textbook</label>
-                        <input type="file" accept=".pdf" ref={fileInputRef} onChange={handleGenerateFromPdf} className="hidden" disabled={isGenerating} id="pdfUpload"/>
+                        <input type="file" accept=".pdf" ref={fileInputRef} onChange={handleGenerateFromPdf} className="hidden" disabled={isGenerating || isSaving} id="pdfUpload"/>
                          <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={isGenerating}
+                            disabled={isGenerating || isSaving}
                             className="w-full flex items-center justify-center px-4 py-2 text-sm font-semibold text-zamzam-teal-700 bg-zamzam-teal-100 rounded-md hover:bg-zamzam-teal-200 transition disabled:bg-slate-300"
                         >
                             <ArrowUpTrayIcon className="h-5 w-5 mr-2" />
@@ -277,7 +414,8 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                 <div>
                   <label htmlFor="category" className="block text-sm font-medium text-slate-700 mb-1">Category</label>
                   <select id="category" value={category} onChange={e => setCategory(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-zamzam-teal-500 bg-white">
-                      {COURSE_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                      {courseCategories.length === 0 && <option disabled>No categories available</option>}
+                      {courseCategories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -297,20 +435,48 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                                   <label className="font-semibold">Module {index + 1}</label>
                                   <button type="button" onClick={() => removeModule(index)} className="text-red-500 hover:text-red-700"><TrashIcon className="h-5 w-5"/></button>
                               </div>
-                              <input type="text" value={mod.title} onChange={e => handleModuleChange(index, 'title', e.target.value)} placeholder="Module Title" className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md bg-white"/>
-                              <select value={mod.type} onChange={e => handleModuleChange(index, 'type', e.target.value)} className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md bg-white">
+                              <input type="text" value={mod.title} onChange={e => handleModuleChange(index, { title: e.target.value })} placeholder="Module Title" className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md bg-white"/>
+                              <select value={mod.type} onChange={e => handleModuleChange(index, { type: e.target.value as 'text' | 'video' })} className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md bg-white">
                                 <option value="text">Text / HTML</option>
                                 <option value="video">Video</option>
                               </select>
+                              
                               {mod.type === 'video' ? (
-                                <input type="url" value={mod.content} onChange={e => handleModuleChange(index, 'content', e.target.value)} placeholder="Video Embed URL (e.g., from YouTube, Vimeo)" className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"/>
+                                <div className="mt-2 space-y-3 p-3 bg-slate-100 rounded-md">
+                                    <div className="flex items-center space-x-4">
+                                        <label className="flex items-center space-x-2 text-sm font-medium">
+                                            <input type="radio" name={`videoType-${index}`} value="embed" checked={mod.videoType !== 'upload'} onChange={() => handleModuleChange(index, { videoType: 'embed', content: '' })} className="h-4 w-4 text-zamzam-teal-600 focus:ring-zamzam-teal-500"/>
+                                            <span>Embed URL</span>
+                                        </label>
+                                        <label className="flex items-center space-x-2 text-sm font-medium">
+                                            <input type="radio" name={`videoType-${index}`} value="upload" checked={mod.videoType === 'upload'} onChange={() => handleModuleChange(index, { videoType: 'upload', content: '' })} className="h-4 w-4 text-zamzam-teal-600 focus:ring-zamzam-teal-500"/>
+                                            <span>Upload File</span>
+                                        </label>
+                                    </div>
+                                    {mod.videoType === 'upload' ? (
+                                        <div>
+                                            <input type="file" accept="video/*" onChange={(e) => handleVideoSelect(e, index)} disabled={isSaving} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-zamzam-teal-50 file:text-zamzam-teal-700 hover:file:bg-zamzam-teal-100"/>
+                                            {mod.content && (
+                                                <div className="mt-2">
+                                                    <p className="text-xs text-slate-500 mb-1">Current video:</p>
+                                                    <video src={mod.content} controls className="w-full max-w-xs rounded shadow"></video>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <input type="url" value={mod.content} onChange={e => handleModuleChange(index, { content: e.target.value, videoType: 'embed' })} placeholder="Video Embed URL (e.g., from YouTube, Vimeo)" className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"/>
+                                    )}
+                                </div>
                               ) : (
-                                <textarea value={mod.content} onChange={e => handleModuleChange(index, 'content', e.target.value)} placeholder="Module Content (Use HTML for formatting)" rows={6} className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"/>
+                                <textarea value={mod.content} onChange={e => handleModuleChange(index, { content: e.target.value })} placeholder="Module Content (Use HTML for formatting)" rows={6} className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"/>
                               )}
                           </div>
                       ))}
                   </div>
-                  <button type="button" onClick={addModule} className="mt-4 flex items-center px-4 py-2 text-sm font-semibold text-zamzam-teal-700 bg-zamzam-teal-100 rounded-md hover:bg-zamzam-teal-200 transition"><PlusIcon className="h-5 w-5 mr-1"/> Add Module</button>
+                  <div className="flex items-center space-x-4">
+                    <button type="button" onClick={addModule} className="mt-4 flex items-center px-4 py-2 text-sm font-semibold text-zamzam-teal-700 bg-zamzam-teal-100 rounded-md hover:bg-zamzam-teal-200 transition"><PlusIcon className="h-5 w-5 mr-1"/> Add Text Module</button>
+                    <button type="button" onClick={addVideoModule} className="mt-4 flex items-center px-4 py-2 text-sm font-semibold text-indigo-700 bg-indigo-100 rounded-md hover:bg-indigo-200 transition"><VideoCameraIcon className="h-5 w-5 mr-1"/> Add Video Module</button>
+                  </div>
               </div>
 
               {/* Quiz */}
@@ -324,12 +490,43 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
                                   <button type="button" onClick={() => removeQuizQuestion(qIndex)} className="text-red-500 hover:text-red-700"><TrashIcon className="h-5 w-5"/></button>
                               </div>
                               <textarea value={q.question} onChange={e => handleQuizChange(qIndex, 'question', e.target.value)} placeholder="Question Text" rows={2} className="w-full mb-2 px-3 py-2 border border-slate-300 rounded-md bg-white"/>
-                              {q.options.map((opt, optIndex) => (
-                                  <div key={optIndex} className="flex items-center space-x-2 mb-2">
-                                      <input type="radio" name={`correct-${qIndex}`} checked={q.correctAnswer === opt} onChange={() => handleQuizChange(qIndex, 'correctAnswer', opt)} className="h-4 w-4 text-zamzam-teal-600 focus:ring-zamzam-teal-500"/>
-                                      <input type="text" value={opt} onChange={e => handleQuizChange(qIndex, 'options', e.target.value, optIndex)} placeholder={`Option ${optIndex + 1}`} className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white"/>
-                                  </div>
-                              ))}
+                              <div className="space-y-2">
+                                {q.options.map((opt, optIndex) => (
+                                    <div key={optIndex} className="flex items-center space-x-2">
+                                        <input 
+                                            type="radio" 
+                                            name={`correct-${qIndex}`} 
+                                            checked={q.correctAnswer === opt && opt.trim() !== ''} 
+                                            onChange={() => handleQuizChange(qIndex, 'correctAnswer', opt)} 
+                                            className="h-4 w-4 text-zamzam-teal-600 focus:ring-zamzam-teal-500 flex-shrink-0"
+                                            disabled={opt.trim() === ''}
+                                        />
+                                        <input 
+                                            type="text" 
+                                            value={opt} 
+                                            onChange={e => handleQuizChange(qIndex, 'options', e.target.value, optIndex)} 
+                                            placeholder={`Option ${optIndex + 1}`} 
+                                            className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white"
+                                        />
+                                        <button 
+                                            type="button" 
+                                            onClick={() => removeQuizOption(qIndex, optIndex)} 
+                                            disabled={q.options.length <= 2}
+                                            className="p-2 text-red-500 hover:text-red-700 rounded-full hover:bg-red-100 transition disabled:text-slate-300 disabled:hover:bg-transparent"
+                                            aria-label="Remove option"
+                                        >
+                                            <TrashIcon className="h-5 w-5"/>
+                                        </button>
+                                    </div>
+                                ))}
+                              </div>
+                              <button 
+                                  type="button" 
+                                  onClick={() => addQuizOption(qIndex)} 
+                                  className="mt-3 flex items-center px-3 py-1 text-xs font-semibold text-zamzam-teal-700 bg-zamzam-teal-100 rounded-md hover:bg-zamzam-teal-200 transition"
+                              >
+                                  <PlusIcon className="h-4 w-4 mr-1"/> Add Option
+                              </button>
                           </div>
                       ))}
                   </div>
@@ -339,7 +536,7 @@ const CourseFormModal: React.FC<CourseFormModalProps> = ({ isOpen, onClose, onSa
         </div>
 
         <div className="p-4 bg-slate-50 border-t flex justify-end items-center space-x-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300 transition">
+            <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-md hover:bg-slate-300 transition">
                 Cancel
             </button>
             <button type="submit" form="courseForm" disabled={isSaving || isGenerating} className="px-6 py-2 text-sm font-semibold text-white bg-zamzam-teal-600 rounded-md hover:bg-zamzam-teal-700 transition disabled:bg-slate-400">

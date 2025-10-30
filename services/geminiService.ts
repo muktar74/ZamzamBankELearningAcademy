@@ -66,9 +66,12 @@ Format the module content using simple HTML tags like <p>, <strong>, <ul>, and <
     const jsonStr = response.text.trim();
     const content: GeneratedContent = JSON.parse(jsonStr);
     return content;
- } catch (error) {
+ } catch (error: any) {
     console.error("Gemini API Error (generateCourseContent):", error);
-    throw new Error(String(error) || "Failed to generate course content from AI. Please check your prompt and try again.");
+    const message = (error && typeof error === 'object' && typeof error.message === 'string')
+        ? error.message
+        : "Failed to generate course content from AI. Please check your prompt and try again.";
+    throw new Error(message);
  }
 };
 
@@ -127,9 +130,12 @@ export const generateCourseFromText = async (documentText: string): Promise<Gene
         const jsonStr = response.text.trim();
         const content: GeneratedContent = JSON.parse(jsonStr);
         return content;
-    } catch (error) {
+    } catch (error: any) {
         console.error("Gemini API Error (generateCourseFromText):", error);
-        throw new Error(String(error) || "Failed to generate course from text. The document may be too complex or the AI service is unavailable.");
+        const message = (error && typeof error === 'object' && typeof error.message === 'string')
+            ? error.message
+            : "Failed to generate course from text. The document may be too complex or the AI service is unavailable.";
+        throw new Error(message);
     }
 };
 
@@ -184,9 +190,12 @@ ${courseContent}
     const jsonStr = response.text.trim();
     const quiz: QuizQuestion[] = JSON.parse(jsonStr);
     return quiz;
-  } catch(error) {
+  } catch(error: any) {
     console.error("Gemini API Error (generateQuiz):", error);
-    throw new Error(String(error) || "Failed to generate quiz from AI. The provided content may be too short or unclear.");
+    const message = (error && typeof error === 'object' && typeof error.message === 'string')
+        ? error.message
+        : "Failed to generate quiz from AI. The provided content may be too short or unclear.";
+    throw new Error(message);
   }
 };
 
@@ -213,9 +222,12 @@ export const getAiChatResponse = async (history: AiMessage[], courseContext?: {t
         });
 
         return response.text;
-    } catch(error) {
+    } catch(error: any) {
         console.error("Gemini API Error (getAiChatResponse):", error);
-        throw new Error(String(error) || "Sorry, I'm having trouble connecting right now. Please try again later.");
+        const message = (error && typeof error === 'object' && typeof error.message === 'string')
+            ? error.message
+            : "Sorry, I'm having trouble connecting right now. Please try again later.";
+        throw new Error(message);
     }
 };
 
@@ -251,8 +263,11 @@ ${discussionText}
         const jsonStr = response.text.trim();
         const topics: string[] = JSON.parse(jsonStr);
         return topics;
-    } catch(error) {
+    } catch(error: any) {
         console.error("Gemini API Error (analyzeDiscussionTopics):", error);
-        throw new Error(String(error) || "Failed to analyze discussion topics. The AI service may be temporarily unavailable.");
+        const message = (error && typeof error === 'object' && typeof error.message === 'string')
+            ? error.message
+            : "Failed to analyze discussion topics. The AI service may be temporarily unavailable.";
+        throw new Error(message);
     }
 };

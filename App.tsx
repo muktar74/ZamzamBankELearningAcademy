@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { User, Course, UserRole, UserProgress, CertificateData, Notification, NotificationType, AiMessage, Review, Toast as ToastType, AllUserProgress, ExternalResource } from './types';
+import { User, Course, UserRole, UserProgress, CertificateData, Notification, NotificationType, AiMessage, Review, Toast as ToastType, AllUserProgress, ExternalResource, CourseCategory } from './types';
 import { BADGE_DEFINITIONS } from './constants';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
@@ -30,6 +30,7 @@ const App: React.FC = () => {
 
   const [users, setUsers] = useState<User[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [courseCategories, setCourseCategories] = useState<CourseCategory[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [allUserProgress, setAllUserProgress] = useState<AllUserProgress>({});
   const [externalResources, setExternalResources] = useState<ExternalResource[]>([]);
@@ -54,20 +55,23 @@ const App: React.FC = () => {
         const fetchProgress = supabase.from('user_progress').select('*');
         const fetchResources = supabase.from('external_resources').select('*').order('created_at', { ascending: false });
         const fetchNotifications = supabase.from('notifications').select('*').eq('user_id', user.id).order('timestamp', { ascending: false });
+        const fetchCategories = supabase.from('course_categories').select('*').order('name', { ascending: true });
 
         const [
             { data: usersData, error: usersError },
             { data: coursesData, error: coursesError },
             { data: progressData, error: progressError },
             { data: resourcesData, error: resourcesError },
-            { data: notificationsData, error: notificationsError }
-        ] = await Promise.all([fetchUsers, fetchCourses, fetchProgress, fetchResources, fetchNotifications]);
+            { data: notificationsData, error: notificationsError },
+            { data: categoriesData, error: categoriesError }
+        ] = await Promise.all([fetchUsers, fetchCourses, fetchProgress, fetchResources, fetchNotifications, fetchCategories]);
 
         if (usersError) throw usersError;
         if (coursesError) throw coursesError;
         if (progressError) throw progressError;
         if (resourcesError) throw resourcesError;
         if (notificationsError) throw notificationsError;
+        if (categoriesError) throw categoriesError;
         
         // Transform progress data into the nested object structure the app uses
         const progressObject = (progressData || []).reduce((acc: AllUserProgress, prog) => {
@@ -87,10 +91,17 @@ const App: React.FC = () => {
         setAllUserProgress(progressObject);
         setExternalResources(resourcesData || []);
         setNotifications(notificationsData || []);
+        setCourseCategories(categoriesData || []);
         
     } catch (error: any) {
-        addToast(`Error loading data: ${error.message}`, 'error');
-        console.error("Error fetching app data:", error);
+        // This enhanced error handling prevents the unhelpful "[object Object]" toast message.
+        // It safely extracts the error message if it's a string, or provides a fallback.
+        const message = (error && typeof error === 'object' && typeof error.message === 'string')
+            ? error.message
+            : 'An unknown error occurred. Check the console for details.';
+        
+        addToast(`Error loading data: ${message}`, 'error');
+        console.error("Error fetching app data:", error); // Log the full error object for debugging.
     }
   }, [addToast]);
   
@@ -170,6 +181,7 @@ const App: React.FC = () => {
     setNotifications([]);
     setAllUserProgress({});
     setExternalResources([]);
+    setCourseCategories([]);
     setAiChatHistory([]);
   };
   
@@ -406,31 +418,48 @@ const App: React.FC = () => {
 
   const updateProgress = useCallback(async (courseId: string, moduleId: string) => {
     if (!currentUser) return;
-    const courseProg = allUserProgress[currentUser.id]?.[courseId] || { completedModules: [], quizScore: null };
-    if (!courseProg.completedModules.includes(moduleId)) {
-        await awardPoints(currentUser.id, 10);
-        
-        const updatedModules = [...courseProg.completedModules, moduleId];
-        const { error } = await supabase.from('user_progress').upsert({
-            user_id: currentUser.id,
-            course_id: courseId,
-            completed_modules: updatedModules,
-        });
 
-        if (error) { addToast(`Error updating progress: ${error.message}`, 'error'); return; }
+    // Get the most up-to-date progress for the specific course.
+    const currentCourseProgress = allUserProgress[currentUser.id]?.[courseId] || { completedModules: [], quizScore: null };
+
+    // Prevent re-processing if the module is already completed.
+    if (!currentCourseProgress.completedModules.includes(moduleId)) {
+      // Award points for the new module completion.
+      await awardPoints(currentUser.id, 10);
+      
+      const updatedCompletedModules = [...currentCourseProgress.completedModules, moduleId];
+
+      // Persist the new list of completed modules to the database.
+      const { error } = await supabase.from('user_progress').upsert({
+        user_id: currentUser.id,
+        course_id: courseId,
+        completed_modules: updatedCompletedModules,
+      });
+
+      if (error) {
+        addToast(`Error updating progress: ${error.message}`, 'error');
+        return;
+      }
+      
+      // Update the local state for immediate UI feedback.
+      // Using a functional update ensures we are modifying the most recent state.
+      setAllUserProgress(prev => {
+        const userProgress = prev[currentUser.id] || {};
+        const courseProgress = userProgress[courseId] || { completedModules: [], quizScore: null };
         
-        setAllUserProgress(prev => ({
-            ...prev,
-            [currentUser.id]: {
-                ...prev[currentUser.id],
-                [courseId]: {
-                    ...courseProg,
-                    completedModules: updatedModules,
-                }
-            }
-        }));
+        return {
+          ...prev,
+          [currentUser.id]: {
+            ...userProgress,
+            [courseId]: {
+              ...courseProgress,
+              completedModules: updatedCompletedModules,
+            },
+          },
+        };
+      });
     }
-  }, [currentUser, awardPoints, allUserProgress, addToast]);
+  }, [currentUser, allUserProgress, awardPoints, addToast]);
 
   const handleRateCourse = useCallback(async (courseId: string, rating: number, comment: string) => {
     if (!currentUser) return;
@@ -501,6 +530,8 @@ const App: React.FC = () => {
         allUserProgress={allUserProgress}
         externalResources={externalResources}
         setExternalResources={setExternalResources}
+        courseCategories={courseCategories}
+        setCourseCategories={setCourseCategories}
       />;
     }
 
@@ -543,6 +574,7 @@ const App: React.FC = () => {
                 userProgress={currentUserProgress}
                 onViewLeaderboard={() => setView('leaderboard')}
                 onViewResources={() => setView('resources')}
+                courseCategories={courseCategories}
                 showOverview={false}
             />
         );
@@ -556,6 +588,7 @@ const App: React.FC = () => {
                 userProgress={currentUserProgress}
                 onViewLeaderboard={() => setView('leaderboard')}
                 onViewResources={() => setView('resources')}
+                courseCategories={courseCategories}
             />
         );
     }

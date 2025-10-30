@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { IconProps } from './components/icons';
 
@@ -30,7 +29,8 @@ export interface Module {
   id: string;
   title: string;
   type: 'text' | 'video';
-  content: string; // Contains HTML for 'text' or a video embed URL for 'video'
+  content: string; // Contains HTML for 'text' or a URL for 'video'
+  videoType?: 'embed' | 'upload'; // For video modules
 }
 
 export interface DiscussionPost {
@@ -49,6 +49,12 @@ export interface Review {
   rating: number;
   comment: string;
   timestamp: string;
+}
+
+export interface CourseCategory {
+  id: string;
+  name: string;
+  created_at?: string;
 }
 
 export interface Course {

@@ -1,9 +1,8 @@
-
 import React, { useState, useMemo } from 'react';
-import { Course, UserProgress, User, Badge } from '../types';
+import { Course, UserProgress, User, Badge, CourseCategory } from '../types';
 import CourseCard from './CourseCard';
 import { SearchIcon, TrophyIcon, BookOpenIcon as LibraryIcon, ShieldCheckIcon } from './icons';
-import { BADGE_DEFINITIONS, COURSE_CATEGORIES } from '../constants';
+import { BADGE_DEFINITIONS } from '../constants';
 
 type FilterStatus = 'all' | 'inProgress' | 'completed';
 
@@ -14,6 +13,7 @@ interface DashboardProps {
   onSelectCourse: (course: Course) => void;
   onViewLeaderboard: () => void;
   onViewResources: () => void;
+  courseCategories: CourseCategory[];
   showOverview?: boolean;
 }
 
@@ -41,6 +41,7 @@ const BadgesWidget: React.FC<{ userBadges: string[] }> = ({ userBadges }) => {
                             <Icon className="h-8 w-8 text-zamzam-teal-600" />
                             <div className="absolute bottom-full mb-2 w-48 bg-slate-800 text-white text-xs rounded py-1 px-2 text-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                                 <p className="font-bold">{badge.name}</p>
+
                                 <p>{badge.description}</p>
                             </div>
                         </div>
@@ -52,7 +53,7 @@ const BadgesWidget: React.FC<{ userBadges: string[] }> = ({ userBadges }) => {
 };
 
 
-const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, userProgress, onViewLeaderboard, onViewResources, showOverview = true }) => {
+const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, userProgress, onViewLeaderboard, onViewResources, courseCategories, showOverview = true }) => {
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -205,15 +206,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, us
                 >
                     All Categories
                 </button>
-                {COURSE_CATEGORIES.map(category => (
+                {courseCategories.map(category => (
                     <button
-                        key={category}
-                        onClick={() => setCategoryFilter(category)}
+                        key={category.id}
+                        onClick={() => setCategoryFilter(category.name)}
                         className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold transition ${
-                            categoryFilter === category ? 'bg-zamzam-teal-600 text-white shadow' : 'bg-white text-slate-700 hover:bg-zamzam-teal-50'
+                            categoryFilter === category.name ? 'bg-zamzam-teal-600 text-white shadow' : 'bg-white text-slate-700 hover:bg-zamzam-teal-50'
                         }`}
                     >
-                        {category}
+                        {category.name}
                     </button>
                 ))}
             </div>
