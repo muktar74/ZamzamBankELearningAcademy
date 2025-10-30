@@ -140,8 +140,18 @@ const App: React.FC = () => {
             await fetchAppData(profile as User);
         }
       } else {
+        // This block is now the single source of truth for the logged-out state.
         setCurrentUser(null);
         setCurrentPage('home');
+        setUsers([]);
+        setCourses([]);
+        setNotifications([]);
+        setAllUserProgress({});
+        setExternalResources([]);
+        setCourseCategories([]);
+        setAiChatHistory([]);
+        setSelectedCourse(null);
+        setCertificateData(null);
       }
     });
 
@@ -174,16 +184,7 @@ const App: React.FC = () => {
     if (error) {
         addToast(`Error logging out: ${error.message}`, 'error');
     }
-    // Explicitly clear state for a faster, more reliable logout UX
-    setCurrentUser(null);
-    setCurrentPage('home');
-    setUsers([]);
-    setCourses([]);
-    setNotifications([]);
-    setAllUserProgress({});
-    setExternalResources([]);
-    setCourseCategories([]);
-    setAiChatHistory([]);
+    // The onAuthStateChange listener will now handle all state cleanup and navigation.
   };
   
   const removeToast = (id: string) => {

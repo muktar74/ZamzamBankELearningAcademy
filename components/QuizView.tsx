@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Course, QuizQuestion } from '../types';
 
@@ -15,24 +14,24 @@ const QuizView: React.FC<QuizViewProps> = ({ course, onQuizComplete }) => {
     setSelectedAnswers(prev => ({ ...prev, [currentQuestionIndex]: answer }));
   };
   
-  const calculateScore = () => {
+  const calculateScore = (finalAnswers: { [key: number]: string }) => {
     let correct = 0;
-    // Use a temporary object to include the very last answer, as state update might be pending
-    const allAnswers = { ...selectedAnswers }; 
     course.quiz.forEach((q, index) => {
-      if (allAnswers[index] === q.correctAnswer) {
+      if (finalAnswers[index] === q.correctAnswer) {
         correct++;
       }
     });
-    return (correct / course.quiz.length) * 100;
+    return Math.round((correct / course.quiz.length) * 100);
   };
 
   const handleNext = () => {
+    if (!selectedAnswers[currentQuestionIndex]) return;
+
     if (currentQuestionIndex < course.quiz.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
       // Last question: calculate score and finish immediately
-      onQuizComplete(calculateScore());
+      onQuizComplete(calculateScore(selectedAnswers));
     }
   };
 
@@ -51,7 +50,7 @@ const QuizView: React.FC<QuizViewProps> = ({ course, onQuizComplete }) => {
               key={index}
               className={`flex items-center p-4 border rounded-lg cursor-pointer transition ${
                 selectedAnswers[currentQuestionIndex] === option
-                  ? 'bg-zamzam-teal-100 border-zamzam-teal-500'
+                  ? 'bg-zamzam-teal-100 border-zamzam-teal-500 shadow-inner'
                   : 'border-slate-300 hover:bg-slate-50'
               }`}
             >

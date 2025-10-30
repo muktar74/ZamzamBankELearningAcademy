@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Course, User, UserRole, AllUserProgress, Toast, DiscussionPost } from '../../types';
+import { Course, User, UserRole, AllUserProgress, Toast, DiscussionPost, UserProgress } from '../../types';
 import { BookOpenIcon, UsersIcon, CheckCircleIcon, StarIcon, SparklesIcon } from '../icons';
 import { analyzeDiscussionTopics } from '../../services/geminiService';
 
@@ -29,9 +29,9 @@ const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({ courses, users, allUser
     const employeeUsers = useMemo(() => users.filter(u => u.role === UserRole.EMPLOYEE), [users]);
 
     const totalCompletions = useMemo(() => {
-        // Fix: Explicitly type the accumulator 'acc' as 'number' to prevent incorrect type inference to 'unknown'.
-        return Object.values(allUserProgress).reduce((acc: number, userProgress) => {
-            return acc + Object.values(userProgress).filter(p => p.quizScore !== null).length;
+        return Object.values(allUserProgress).reduce((acc: number, userProgress: UserProgress) => {
+            const completedCount = Object.values(userProgress).filter(p => p.quizScore !== null).length;
+            return acc + completedCount;
         }, 0);
     }, [allUserProgress]);
     

@@ -44,7 +44,7 @@ const AdminReports: React.FC<AdminReportsProps> = ({ users, courses, allUserProg
       'Email': user.email,
       'Role': user.role,
       'Status': user.approved ? 'Approved' : 'Pending',
-      'RegistrationDate': user.id.startsWith('user-') ? new Date(parseInt(user.id.split('-')[1])).toLocaleDateString() : 'N/A',
+      'RegistrationDate': user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A',
       'Points': user.points,
     }));
     downloadCSV(data, 'user_registration_report.csv');

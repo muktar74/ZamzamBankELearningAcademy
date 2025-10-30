@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Course, User, Toast } from '../types';
 import QuizView from './QuizView';
 import DiscussionForum from './DiscussionForum';
 import { ChevronLeftIcon, DocumentTextIcon, CheckCircleIcon, LockClosedIcon, ChatBubbleLeftRightIcon, AcademicCapIcon, StarIcon, BookOpenIcon as DownloadIcon, VideoCameraIcon } from './icons';
 import ReviewsTab from './ReviewsTab';
+import { supabase } from '../services/supabaseClient';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface CourseViewProps {
   course: Course | null;
@@ -36,6 +38,26 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
           }
       }
   }, [course, activeModuleId]);
+  
+  // Real-time listener for course deletion
+  useEffect(() => {
+    let channel: RealtimeChannel | null = null;
+    if(course) {
+        channel = supabase
+            .channel(`public:courses:id=eq.${course.id}`)
+            .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'courses', filter: `id=eq.${course.id}`},
+            () => {
+                addToast('This course is no longer available.', 'error');
+                onBack();
+            })
+            .subscribe();
+    }
+    return () => {
+        if(channel) {
+            supabase.removeChannel(channel);
+        }
+    }
+  }, [course, addToast, onBack]);
 
   const activeModule = course?.modules.find(m => m.id === activeModuleId);
   const activeModuleIndex = course?.modules.findIndex(m => m.id === activeModuleId) ?? -1;
@@ -49,19 +71,35 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
     }
   }, [activeModuleId, course, completedModules, onModuleComplete, addToast]);
   
-  const handleNextModule = () => {
+  const handleNextModule = useCallback(() => {
     if (course && activeModuleIndex < course.modules.length - 1) {
         const nextModule = course.modules[activeModuleIndex + 1];
         setActiveModuleId(nextModule.id);
     }
-  };
+  }, [course, activeModuleIndex]);
 
-  const handlePrevModule = () => {
+  const handlePrevModule = useCallback(() => {
     if (course && activeModuleIndex > 0) {
         const prevModule = course.modules[activeModuleIndex - 1];
         setActiveModuleId(prevModule.id);
     }
-  };
+  }, [course, activeModuleIndex]);
+  
+  // Add keyboard navigation for modules
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'ArrowRight') {
+            handleNextModule();
+        } else if (event.key === 'ArrowLeft') {
+            handlePrevModule();
+        }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleNextModule, handlePrevModule]);
 
   if (!course) {
     return (
@@ -95,6 +133,31 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
         <span>{label}</span>
     </button>
   );
+  
+  const VideoPlayer = React.memo(({ src, title, type }: { src: string; title: string; type?: 'embed' | 'upload'}) => {
+      if (type === 'upload') {
+          return (
+               <video
+                    key={src} // Force re-render if src changes
+                    src={src}
+                    controls
+                    className="w-full h-full object-contain"
+                >
+                    Your browser does not support the video tag.
+                </video>
+          );
+      }
+      return (
+          <iframe
+            src={src}
+            title={title}
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="w-full h-full"
+        ></iframe>
+      );
+  });
 
   return (
     <div className="bg-white p-4 sm:p-8 rounded-xl shadow-lg">
@@ -175,25 +238,7 @@ const CourseView: React.FC<CourseViewProps> = ({ course, setCourses, currentUser
                     <h3 className="text-3xl font-bold text-slate-800 mb-4">{activeModule.title}</h3>
                     {activeModule.type === 'video' ? (
                         <div className="aspect-w-16 aspect-h-9 bg-black rounded-lg overflow-hidden shadow-sm">
-                           {activeModule.videoType === 'upload' ? (
-                                <video
-                                    key={activeModule.content} // Force re-render if src changes
-                                    src={activeModule.content}
-                                    controls
-                                    className="w-full h-full object-contain"
-                                >
-                                    Your browser does not support the video tag.
-                                </video>
-                           ) : (
-                                <iframe
-                                    src={activeModule.content}
-                                    title={activeModule.title}
-                                    frameBorder="0"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                    allowFullScreen
-                                    className="w-full h-full"
-                                ></iframe>
-                           )}
+                           <VideoPlayer src={activeModule.content} title={activeModule.title} type={activeModule.videoType}/>
                         </div>
                     ) : (
                         <div className="prose max-w-none prose-p:text-slate-700 prose-p:leading-relaxed prose-strong:text-slate-800 prose-ul:list-disc prose-ul:ml-6 prose-img:rounded-md prose-img:shadow-sm prose-a:text-zamzam-teal-600 prose-a:font-semibold hover:prose-a:text-zamzam-teal-700">

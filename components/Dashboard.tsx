@@ -59,7 +59,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, us
   const [searchQuery, setSearchQuery] = useState('');
 
   const completedCoursesCount = useMemo(() => {
-    return Object.values(userProgress).filter((p: UserProgress[string]) => p.quizScore !== null).length;
+    return Object.values(userProgress).filter((p: UserProgress[string]) => p.completionDate).length;
   }, [userProgress]);
 
   const recentlyViewedCourses = useMemo(() => {
@@ -73,6 +73,45 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, us
       .slice(0, 3);
   }, [courses, userProgress]);
 
+  const recommendedCourses = useMemo(() => {
+    const completedOrStartedCategories = new Set(
+        Object.entries(userProgress)
+            .filter(([, progress]) => progress.completedModules?.length > 0 || progress.completionDate)
+            .map(([courseId]) => courses.find(c => c.id === courseId)?.category)
+            .filter(Boolean)
+    );
+
+    let recommendations: Course[] = [];
+
+    // If the user has history, recommend from related categories
+    if (completedOrStartedCategories.size > 0) {
+        recommendations = courses.filter(course =>
+            !userProgress[course.id]?.completionDate && // not completed
+            completedOrStartedCategories.has(course.category) // in a preferred category
+        );
+    }
+
+    // If no recommendations yet (e.g., new user or no related courses), recommend popular courses
+    if (recommendations.length < 3) {
+        const popularCourses = courses
+            .map(course => ({
+                ...course,
+                // A simple popularity metric: number of reviews
+                popularity: course.reviews.length,
+            }))
+            .sort((a, b) => b.popularity - a.popularity);
+            
+        recommendations = [...recommendations, ...popularCourses].filter(
+             (course, index, self) =>
+                !userProgress[course.id]?.completionDate &&
+                index === self.findIndex((c) => c.id === course.id)
+        );
+    }
+    
+    return recommendations.slice(0, 3);
+  }, [courses, userProgress]);
+
+
   const filteredCourses = useMemo(() => {
     return courses.filter(course => {
         // Status filter
@@ -80,10 +119,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, us
         let statusMatch = false;
         switch (filter) {
             case 'completed':
-                statusMatch = progress?.quizScore !== null;
+                statusMatch = !!progress?.completionDate;
                 break;
             case 'inProgress':
-                statusMatch = progress && progress.completedModules.length > 0 && progress.quizScore === null;
+                statusMatch = progress && progress.completedModules.length > 0 && !progress.completionDate;
                 break;
             case 'all':
             default:
@@ -149,9 +188,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, us
 
             {recentlyViewedCourses.length > 0 && (
                 <div className="mb-12">
-                    <h3 className="text-2xl font-bold text-slate-800 mb-4">Recently Viewed</h3>
+                    <h3 className="text-2xl font-bold text-slate-800 mb-4">Pick Up Where You Left Off</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {recentlyViewedCourses.map(course => (
+                            <CourseCard
+                                key={course.id}
+                                course={course}
+                                progress={userProgress[course.id] || { completedModules: [], quizScore: null }}
+                                onSelectCourse={() => onSelectCourse(course)}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
+            
+            {recommendedCourses.length > 0 && (
+                <div className="mb-12">
+                    <h3 className="text-2xl font-bold text-slate-800 mb-4">Recommended For You</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        {recommendedCourses.map(course => (
                             <CourseCard
                                 key={course.id}
                                 course={course}
