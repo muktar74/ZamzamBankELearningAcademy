@@ -76,7 +76,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, courses, onSelectCourse, us
   const recommendedCourses = useMemo(() => {
     const completedOrStartedCategories = new Set(
         Object.entries(userProgress)
-            .filter(([, progress]) => progress.completedModules?.length > 0 || progress.completionDate)
+            // FIX: Explicitly type `progress` to resolve TypeScript's 'unknown' type inference
+            // for values from Object.entries, which was causing a compile error.
+            .filter(([, progress]: [string, UserProgress[string]]) => progress.completedModules.length > 0 || progress.completionDate)
             .map(([courseId]) => courses.find(c => c.id === courseId)?.category)
             .filter(Boolean)
     );

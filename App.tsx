@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { User, Course, UserRole, UserProgress, CertificateData, Notification, NotificationType, AiMessage, Review, Toast as ToastType, AllUserProgress, ExternalResource, CourseCategory } from './types';
 import { BADGE_DEFINITIONS } from './constants';
@@ -112,46 +113,52 @@ const App: React.FC = () => {
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      if (session?.user) {
-        // Fetch the user profile using the secure RPC call.
-        // This is more robust against RLS race conditions than a direct select.
-        const { data: profile, error } = await supabase
-            .rpc('get_user_profile')
-            .single();
-        
-        if (error || !profile) {
-            console.error('Error fetching user profile via RPC:', error?.message || 'Profile not found.');
-            addToast('Could not load your profile. Please try logging in again.', 'error');
-            await supabase.auth.signOut();
-            return;
-        }
+      try {
+        setSession(session);
+        if (session?.user) {
+          // Fetch the user profile using the secure RPC call.
+          // This is more robust against RLS race conditions than a direct select.
+          const { data: profile, error } = await supabase
+              .rpc('get_user_profile')
+              .single();
+          
+          if (error || !profile) {
+              console.error('Error fetching user profile via RPC:', error?.message || 'Profile not found.');
+              addToast('Could not load your profile. Please try logging in again.', 'error');
+              await supabase.auth.signOut();
+              return;
+          }
 
-        // Admins should always be allowed in, regardless of 'approved' status.
-        if (!profile.approved && profile.role !== UserRole.ADMIN) {
-            // This case should ideally be caught by handleLogin on a fresh sign-in,
-            // but it's a good safeguard for session restoration if approval status changes.
-            addToast('Your account is pending approval.', 'error');
-            await supabase.auth.signOut();
+          // Admins should always be allowed in, regardless of 'approved' status.
+          if (!profile.approved && profile.role !== UserRole.ADMIN) {
+              // This case should ideally be caught by handleLogin on a fresh sign-in,
+              // but it's a good safeguard for session restoration if approval status changes.
+              addToast('Your account is pending approval.', 'error');
+              await supabase.auth.signOut();
+          } else {
+              setCurrentUser(profile as User);
+              setCurrentPage('app');
+              setCurrentView(profile.role === UserRole.ADMIN ? 'admin' : 'dashboard');
+              await fetchAppData(profile as User);
+          }
         } else {
-            setCurrentUser(profile as User);
-            setCurrentPage('app');
-            setCurrentView(profile.role === UserRole.ADMIN ? 'admin' : 'dashboard');
-            await fetchAppData(profile as User);
+          // This block is now the single source of truth for the logged-out state.
+          setCurrentUser(null);
+          setCurrentPage('home');
+          setUsers([]);
+          setCourses([]);
+          setNotifications([]);
+          setAllUserProgress({});
+          setExternalResources([]);
+          setCourseCategories([]);
+          setAiChatHistory([]);
+          setSelectedCourse(null);
+          setCertificateData(null);
         }
-      } else {
-        // This block is now the single source of truth for the logged-out state.
-        setCurrentUser(null);
-        setCurrentPage('home');
-        setUsers([]);
-        setCourses([]);
-        setNotifications([]);
-        setAllUserProgress({});
-        setExternalResources([]);
-        setCourseCategories([]);
-        setAiChatHistory([]);
-        setSelectedCourse(null);
-        setCertificateData(null);
+      } catch (e) {
+          console.error("Error in onAuthStateChange listener:", e);
+          addToast("An unexpected authentication error occurred. Please try again.", "error");
+          await supabase.auth.signOut();
       }
     });
 
